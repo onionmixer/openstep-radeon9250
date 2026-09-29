@@ -1,0 +1,13 @@
+LOCALMAKEFILEDIR = /LocalDeveloper/Makefiles/driverkit
+LOCALMAKEFILE = Makefile.local_preamble
+-include $(LOCALMAKEFILEDIR)/$(LOCALMAKEFILE)
+
+# <driverkit/IODeviceInspector.h> imports <appkit/appkit.h>, which the
+# OPENSTEP 4.2 developer tree does not ship; compat/ declares the little of
+# it the inspector uses (the Matrox and SpaceSaver2 inspectors do the same).
+# HEADER_PATHS, not OTHER_CFLAGS: the target build sets OTHER_CFLAGS on the
+# make command line for the build stamp, which would REPLACE this -- the
+# Matrox inspector lost appkit/appkit.h exactly that way
+# (docs/R3_MULTIMODE_PLAN.md 26-1 E1).  common.make puts HEADER_PATHS first in
+# PROJECT_SPECIFIC_CFLAGS and nothing here or in the system makefiles sets it.
+HEADER_PATHS = -I./compat

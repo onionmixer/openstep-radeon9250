@@ -1,0 +1,5 @@
+/* What Configure.app shows for this driver ("Long Name" reaches the screen;
+ * keep it short, docs/R2B0_IMPL_PLAN.md section 3).  The first key follows
+ * Server Name (Matrox C3 verdict). */
+"OSRDNDisplay" = "OpenStep Radeon 9250 Display";
+"Long Name" = "OpenStep Radeon 9250 Display";

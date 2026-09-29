@@ -1,0 +1,159 @@
+# Reviewed differences of tools/r2a/target-*.sh from tools/r1/target-*.sh after
+# tools/r2a/check_drift.py RENAMES (2026-09-15, R2a code).  Each hunk was read
+# before it was listed: names, the target shell rules (no ps, no set --), the
+# NFS copy of the reloc and its sum, the R2ARELOC_PASS requirement, run.done,
+# the VGA baseline check.  Edit by hand only.
+
+@@ target-build.sh
+- # printf, cut, $(...), grep -q, mkdir -p, test -e, dirname; string checks are
+- # case patterns so that a missing command cannot turn a check into a silent
+- # pass.  ASCII only.
++ # printf, cut, $(...), grep -q, mkdir -p, test -e, dirname, ps, set --; no
++ # positional parameter after the first function (the target sh does not
++ # restore them after a call); string checks are case patterns so that a
++ # missing command cannot turn a check into a silent pass.  ASCII only.
+@@ target-build.sh
++ #      (_splhigh and _splx among them)
++ #   7. the reloc is copied to <nfs>/<runid>/RDNR2aProbe_reloc and the copy's
++ #      sum must equal the reloc's; the sum goes to <nfs>/<runid>/reloc.sum
++ #      for tools/r2a/check_reloc.py on the host
+@@ target-build.sh
+- # tools/r2a/check_target_scripts.sh can run this file on the host against
++ # tools/r2a/check_target_r2a.py can run this file on the host against
+@@ target-build.sh
++ NFSOUT=${R2A_NFSOUT:-/ndrv/openstep-radeon9250/build/r2a}
+@@ target-build.sh
+- got=`$SUM "$TAR"`
+- set -- $got
+- GOTSUM="$1"
+- GOTBLK="$2"
++ GOTSUM=`$SUM "$TAR" | awk '{print $1}'`
++ GOTBLK=`$SUM "$TAR" | awk '{print $2}'`
+@@ target-build.sh
+- got=`$SUM $RELOC`
+- set -- $got
+- RSUM="$1 $2"
+- case "$1" in
+-     ""|*[!0-9]*) fail "cannot sum the product: '$got'" ;;
++ RS1=`$SUM $RELOC | awk '{print $1}'`
++ RS2=`$SUM $RELOC | awk '{print $2}'`
++ case "$RS1$RS2" in
++     ""|*[!0-9]*) fail "cannot sum the product: '$RS1 $RS2'" ;;
+@@ target-build.sh
++ RSUM="$RS1 $RS2"
++ 
++ echo "=== 7. copy the reloc for the host disassembly gate ==="
++ if [ ! -d $NFSOUT ]; then mkdir $NFSOUT || fail "cannot create $NFSOUT"; fi
++ if [ ! -d $NFSOUT/$RUNID ]; then mkdir $NFSOUT/$RUNID || fail "cannot create $NFSOUT/$RUNID"; fi
++ rm -f $NFSOUT/$RUNID/RDNR2aProbe_reloc $NFSOUT/$RUNID/reloc.sum $NFSOUT/$RUNID/R2ARELOC_PASS
++ cp $RELOC $NFSOUT/$RUNID/RDNR2aProbe_reloc || fail "cannot copy the reloc to $NFSOUT/$RUNID"
++ sync
++ CS1=`$SUM $NFSOUT/$RUNID/RDNR2aProbe_reloc | awk '{print $1}'`
++ CS2=`$SUM $NFSOUT/$RUNID/RDNR2aProbe_reloc | awk '{print $2}'`
++ echo "  reloc sum $RSUM, copy sum $CS1 $CS2"
++ if [ "$CS1 $CS2" != "$RSUM" ]; then fail "the copy on $NFSOUT differs from the reloc"; fi
++ echo "$RSUM" > $NFSOUT/$RUNID/reloc.sum
++ sync
++ 
+@@ target-build.sh
++ echo "host: python3 tools/r2a/check_reloc.py build/r2a/$RUNID/RDNR2aProbe_reloc $RSUM --marker build/r2a/$RUNID"
+@@ target-run.sh
+- # capture its log.  Run ON the target, as root, after the operator has
+- # installed the Radeon and booted with it.
++ # capture its log.  Run ON the target, as root, detached:
+@@ target-run.sh
+- #   sh target-run.sh
++ #   nohup sh target-run.sh < /dev/null > /tmp/rdn-r2a-run.out 2>&1 &
++ #
++ # and watch <nfs>/<runid>/run.done from the host.  nxlogd is checked on the
++ # host (tools/nx-logcatch.sh status) before starting: `ps' from a detached
++ # job never returns on the target (2026-09-15).
+@@ target-run.sh
+- #   D. shell facts for R1 section 4-D (read-only): uname, the memory device
+- #      nodes, the loaded-server list
++ #   D. shell facts (read-only): uname, the loaded-server list
+@@ target-run.sh
+- #      sum still equals the one it recorded
+- #   1. refuses unless nxlogd is running and Active Drivers names no Matrox
+- #      driver (the generic VGA baseline, plan R1 section 2)
++ #      sum still equals the one it recorded AND the host's disassembly gate
++ #      (tools/r2a/check_reloc.py) wrote <nfs>/<runid>/R2ARELOC_PASS for
++ #      these same bytes
++ #   1. refuses unless Active Drivers names VGA and no Matrox driver (the
++ #      generic VGA baseline)
+@@ target-run.sh
+- #   7. writes /tmp/rdn-r2a-<runid>.log: the facts and the new syslog lines
++ #   7. writes /tmp/rdn-r2a-<runid>.log: the facts and the new syslog lines,
++ #      copies it to <nfs>/<runid>/, and writes <nfs>/<runid>/run.done with
++ #      the final R2ARUN line -- on every exit after the run id is known
+@@ target-run.sh
+- # The probe itself makes no device writes (hostcheck.sh, sim_r1.py).  ASCII
+- # only; no printf, cut, $(...), grep -q.
++ # The probe writes CLOCK_CNTL_INDEX only, under the PLL group rules
++ # (docs/R1C_R2A_IMPL_PLAN.md section 2-4; hostcheck.sh, sim_r2a.py).  ASCII
++ # only; no printf, cut, $(...), grep -q, ps, set --.
+@@ target-run.sh
+- # Target paths; R2A_* overrides are for tools/r2a/check_target_scripts.sh only.
++ # Target paths; R2A_* overrides are for tools/r2a/check_target_r2a.py only.
+@@ target-run.sh
++ NFSOUT=${R2A_NFSOUT:-/ndrv/openstep-radeon9250/build/r2a}
+@@ target-run.sh
++ DONE=""
++ LOG=""
++ 
++ finish() {
++     line="$1"
++     echo "$line"
++     if [ "$LOG" != "" ] && [ -f "$LOG" ] && [ -d "$NFSOUT/$RUNID" ]; then
++         cp $LOG $NFSOUT/$RUNID/rdn-r2a-$RUNID.log
++     fi
++     if [ "$DONE" != "" ]; then
++         echo "$line" > $DONE
++         sync
++     fi
++ }
+@@ target-run.sh
+-     why="$1"
+-     echo "R2ARUN FAIL $why"
++     finish "R2ARUN FAIL $1"
+@@ target-run.sh
+- got=`$SUM $RELOC`
+- set -- $got
+- if [ "`cat $TOP/R2ABUILD_PASS`" != "$STAMP $RUNID $1 $2" ]; then
+-     fail "R2ABUILD_PASS does not name this tree and these reloc bytes ($STAMP $RUNID $1 $2)"
++ case "$RUNID" in
++     ""|*[!0-9]*) fail "runid malformed: '$RUNID'" ;;
++ esac
++ if [ -d $NFSOUT/$RUNID ]; then DONE=$NFSOUT/$RUNID/run.done; rm -f $DONE; fi
++ RS1=`$SUM $RELOC | awk '{print $1}'`
++ RS2=`$SUM $RELOC | awk '{print $2}'`
++ if [ "`cat $TOP/R2ABUILD_PASS`" != "$STAMP $RUNID $RS1 $RS2" ]; then
++     fail "R2ABUILD_PASS does not name this tree and these reloc bytes ($STAMP $RUNID $RS1 $RS2)"
++ fi
++ if [ "$DONE" = "" ]; then fail "no $NFSOUT/$RUNID: target-build.sh did not copy the reloc"; fi
++ if [ ! -f $NFSOUT/$RUNID/R2ARELOC_PASS ]; then
++     fail "no R2ARELOC_PASS in $NFSOUT/$RUNID: run tools/r2a/check_reloc.py on the host first"
++ fi
++ if [ "`cat $NFSOUT/$RUNID/R2ARELOC_PASS`" != "$RS1 $RS2" ]; then
++     fail "R2ARELOC_PASS does not name these reloc bytes ($RS1 $RS2)"
+@@ target-run.sh
+- echo "R2AFACTS stamp=$STAMP runid=$RUNID" > $LOG
++ echo "R2AFACTS stamp=$STAMP runid=$RUNID reloc=$RS1.$RS2" > $LOG
+@@ target-run.sh
+- ls -l /dev/mem /dev/kmem >> $LOG 2>&1
+@@ target-run.sh
+- # the hang record lives only in nxlogd's copy on the host (plan R1 section 2)
+- n=`ps ax | grep nxlogd | grep -v grep | wc -l | sed 's/ //g'`
+- echo "  nxlogd processes: $n"
+- if [ "$n" = "0" ]; then fail "nxlogd is not running: start tools/nx-logcatch.sh on the host first"; fi
+@@ target-run.sh
++ n=`grep '"Active Drivers"' $SYSCFG | egrep -c 'VGA'`
++ if [ "$n" = "0" ]; then fail "Active Drivers names no VGA driver: boot the generic VGA baseline"; fi
+@@ target-run.sh
+- trap 'echo "R2ARUN FAIL interrupted"; unload; exit 1' 1 2 15
++ trap 'unload; finish "R2ARUN FAIL interrupted"; exit 1' 1 2 15
+@@ target-run.sh
+- echo "R2ARUN DONE $LOG"
+- echo "host: python3 tools/r2a/parse_r2a.py <fetched copy of $LOG> $RUNID $STAMP"
++ finish "R2ARUN DONE $LOG"
++ echo "host: python3 tools/r2a/parse_r2a.py build/r2a/$RUNID/rdn-r2a-$RUNID.log $RUNID $STAMP build/r1/rdn-r1-789453017.log 789453017 --out build/r2a/$RUNID"

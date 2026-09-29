@@ -1,0 +1,54 @@
+00:00.0 Host bridge [0600]: Intel 82865G/PE/P Host Bridge [8086:2570] rev 02
+	Subsystem: [10cf:121c] Fujitsu
+	Command 0x0106, Status 0x2090
+	BAR0: mem  0xd4000000 (32-bit, prefetchable)
+00:02.0 Display controller [0380]: Intel 82865G Integrated Graphics [8086:2572] rev 02
+	Subsystem: [10cf:120d] Fujitsu
+	IRQ 10, pin A
+	Command 0x0000, Status 0x0090
+	BAR0: mem  0xd8000000 (32-bit, prefetchable)
+	BAR1: mem  0xd0080000 (32-bit, non-prefetchable)
+	BAR2: io   0x1090
+00:03.0 PCI bridge [0604]: Intel 82865G/PE/P PCI-to-CSA Bridge [8086:2573] rev 02
+	Bridge: primary 00, secondary 02, subordinate 02
+	Command 0x0107, Status 0x00a0
+00:1e.0 PCI bridge [0604]: Intel 82801 PCI Bridge [8086:244e] rev c2
+	Bridge: primary 00, secondary 03, subordinate 03
+	Command 0x0107, Status 0x0080
+00:1f.0 ISA bridge [0601]: Intel 82801EB/ER LPC Interface (ICH5) [8086:24d0] rev 02
+	Command 0x000f, Status 0x0280
+00:1f.1 IDE interface [0101]: Intel 82801EB/ER IDE Controller [8086:24db] rev 02
+	Programming interface 0x8a
+	Subsystem: [10cf:121d] Fujitsu
+	IRQ 255, pin A
+	Command 0x0005, Status 0x0288
+	BAR4: io   0x1080
+00:1f.3 SMBus controller [0c05]: Intel 82801EB/ER SMBus Controller [8086:24d3] rev 02
+	Subsystem: [10cf:121d] Fujitsu
+	IRQ 9, pin B
+	Command 0x0001, Status 0x0280
+	BAR4: io   0x1060
+02:01.0 Ethernet controller [0200]: Intel 82547EI Gigabit Ethernet (CSA) [8086:1019] rev 00
+	Subsystem: [10cf:11bc] Fujitsu
+	IRQ 3, pin A
+	Command 0x0007, Status 0x0238
+	BAR0: mem  0xd0100000 (32-bit, non-prefetchable)
+	BAR2: io   0x2000
+03:0b.0 VGA compatible controller [0300]: ATI Unknown device [1002:5960] rev 01
+	Subsystem: [1002:5960] ATI
+	IRQ 11, pin A
+	Command 0x0307, Status 0x02b0
+	BAR0: mem  0xe0000000 (32-bit, prefetchable)
+	BAR1: io   0x3000
+	BAR2: mem  0xd0200000 (32-bit, non-prefetchable)
+03:0d.0 Multimedia audio controller [0401]: Creative Labs Unknown device [1102:0002] rev 05
+	Subsystem: [1102:8040] Creative Labs
+	IRQ 11, pin A
+	Command 0x0305, Status 0x0290
+	BAR0: io   0x3400
+03:0d.1 Unknown device [0980]: Creative Labs Unknown device [1102:7002] rev 05
+	Subsystem: [1102:0020] Creative Labs
+	Command 0x0305, Status 0x0290
+	BAR0: io   0x3420
+
+11 PCI functions found

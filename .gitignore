@@ -1,0 +1,49 @@
+# Internal only: the machine's real address and account details.
+HANDOFF.md
+
+# Third-party reference sources.  tools/fetch-ref.sh rebuilds ref/upstream;
+# ref/README.md (committed) says what each item is.
+ref/upstream/
+ref/private/
+
+# Proprietary / analysis inputs must never be committed.
+*.i64
+*.idb
+*.id0
+*.id1
+*.nam
+*.til
+analysis-output/
+
+# OPENSTEP build products -- but NOT the scripts that live beside them.
+#
+# `build/` used to be ignored whole.  183 .py/.sh files live there -- runners,
+# judges, independent recounts, design searches -- and 80 of them are needed
+# from outside it: tools/check-all.sh runs six directly (build/m1a/design*.py,
+# build/m1b/design*.py, build/m1d/indep_m1d.py, build/r7b/judge_r7b.py), and the
+# documents cite the rest.  A clean clone would have failed its own suite.
+# Products (binaries, tars, transcripts, logs, snapshots) stay ignored.
+build/**
+!build/**/
+!build/**/*.py
+!build/**/*.sh
+# One C source is cited by docs/G5_4_READPIX_AND_CLEANUP_PLAN.md and so is
+# tracked; the rule says so instead of relying on an earlier `git add -f`.
+!build/g54/readpix_probe.c
+# docs/REL1_PACKAGING_PLAN.md 17 names the seed probe the rehearsals ran
+!build/rel1/b8probe.c
+*.config/
+i386_obj/
+sym/
+*.o
+*.d
+*.reloc
+
+# Release artefacts belong on a release page, not in history.
+release-assets/
+scratchpad/
+
+# python bytecode from the host tools.  60 of these were committed before the
+# rule existed; they are untracked now and must not come back.
+__pycache__/
+*.pyc

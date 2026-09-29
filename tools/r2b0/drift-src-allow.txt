@@ -1,0 +1,33 @@
+# Reviewed differences of osrdn_pll.m's PLL group functions from R2a's
+# RDNR2aProbe.m (tools/r2b0/check_drift_src.py, 2026-09-16, R2b-0 code).
+# pllGroup and whyName are identical.  pllSnapshot: exported under the
+# osrdn_ name with two out-parameters (how many groups, why it stopped), and
+# the line writer is the record's osrdn_line.  No hardware access differs.
+# Edit by hand only.
+
+@@ osrdn_pll_snapshot
+- static int
+- pllSnapshot(vm_address_t base)
++ int
++ osrdn_pll_snapshot(vm_address_t base, int *doneOut, int *whyOut)
+@@ osrdn_pll_snapshot
+-     r2aLine(line);
++     osrdn_line(line);
+@@ osrdn_pll_snapshot
+-         r2aLine(line);
++         osrdn_line(line);
+@@ osrdn_pll_snapshot
+-         r2aLine(line);
+-         r2aLine("stop reason=pll-index-busy");
++         osrdn_line(line);
++         osrdn_line("stop reason=pll-index-busy");
+@@ osrdn_pll_snapshot
+-         r2aLine(line);
+-         r2aLine("stop reason=pll-index-disturbed");
++         osrdn_line(line);
++         osrdn_line("stop reason=pll-index-disturbed");
+@@ osrdn_pll_snapshot
+-     r2aLine(line);
++     osrdn_line(line);
++     *doneOut = done;
++     *whyOut = why;

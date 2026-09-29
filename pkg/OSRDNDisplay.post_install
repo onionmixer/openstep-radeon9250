@@ -1,0 +1,162 @@
+#!/bin/csh -f
+# Put the machine's instance tables back over the ones the payload wrote.
+#
+# THE ORDER IS THE DESIGN.  Every table is copied in and compared BEFORE any
+# of the payload's are removed, because the state to avoid above all others
+# is a bundle with no instance table at all: that is not a boot candidate,
+# and the machine comes up with no display.  A mixture of old and shipped
+# tables is survivable; none is not.
+#
+# It does not fake success.  A restore that fails and reports 0 turns a
+# driver that may not load into an Installer that said it worked.
+#
+# This does not make an interrupted install safe -- Installer rewrites the
+# live bundle and nothing here can make that atomic.  What it does is keep
+# the configuration recoverable: on any failure the stash is left in place.
+
+if ($#argv != 2) then
+    echo "FAILED (unexpected Installer arguments)"
+    exit 1
+endif
+
+set prefix = "$argv[2]"
+if ("$prefix" == "/") set prefix = ""
+
+set drv = "${prefix}/private/Drivers/i386"
+set cfg = "$drv/OSRDNDisplay.config"
+set stash = "$drv/OSRDNDisplay.instances"
+
+#
+# THE 3D rdnvram0, ON EVERY INSTALL (REL1, openstep-radeon9250
+# docs/REL1_PACKAGING_PLAN.md 19).  Before the first-install exit below, or a
+# fresh install would never reach it.  The major is read from the installed
+# Default.table, which the driver registers with ("Character Major"), so the
+# node and the driver cannot disagree.  Mode 666 is the operator's decision:
+# every user may draw with the card -- and, through a defect in the kernel's
+# mmap (lengths of 2^31 and more skip the checks), every user who can open
+# this node can also crash the machine.  INSTALL.md says so.
+#
+set node = "${prefix}/private/dev/rdnvram0"
+if (! -r "$cfg/Default.table") then
+    echo "OSRDNDisplay: $cfg/Default.table is missing; the 3D node was not made"
+    exit 1
+endif
+set major = `grep '^"Character Major"' "$cfg/Default.table" | sed 's/[^0-9]//g'`
+if ("$major" == "") then
+    echo "OSRDNDisplay: no Character Major in Default.table; the 3D node was not made"
+    exit 1
+endif
+rm -f "$node"
+/usr/etc/mknod "$node" c $major 0
+if ($status != 0) then
+    echo "OSRDNDisplay: mknod $node c $major 0 failed; the card will not be used"
+    exit 1
+endif
+chmod 666 "$node"
+set got = `ls -l "$node" | awk '{print $1, $4, $5}'`
+if ("$got" != "crw-rw-rw- ${major}, 0") then
+    echo "OSRDNDisplay: $node came out as '$got'; the card will not be used"
+    exit 1
+endif
+echo "OSRDNDisplay: made $node (c $major 0, mode 666)"
+
+if (! -d "$stash") exit 0        # first install: the shipped table stays
+
+if (! -d "$cfg") then
+    echo "OSRDNDisplay: $cfg is missing after extraction; $stash is kept"
+    exit 1
+endif
+
+set kept = `ls "$stash" | grep '^Instance.*\.table$'`
+if ("$kept" == "") then
+    rmdir "$stash"
+    exit 0
+endif
+
+#
+# Copy each one in and prove it arrived, byte for byte.  Under root a
+# readability test proves nothing, so the test is the copy itself.
+#
+foreach t ($kept)
+    cp "$stash/$t" "$cfg/$t"
+    if ($status != 0) then
+        echo "OSRDNDisplay: could not restore $t; $stash is kept"
+        exit 1
+    endif
+    chmod 444 "$cfg/$t"
+    cmp -s "$stash/$t" "$cfg/$t"
+    if ($status != 0) then
+        echo "OSRDNDisplay: $t did not survive the copy; $stash is kept"
+        exit 1
+    endif
+end
+
+#
+# THE PACKAGE'S IDENTITY GOES BACK IN.
+#
+# (Taken from openstep-matrox-remade.)  Preserving the machine's table whole
+# is right for what the operator chose and wrong for what describes the
+# driver: in the Matrox package it kept a development "Version" = "0.5"
+# through that driver's 1.0 and 1.1, and it wrote the OLD
+# Driver Name back over a renamed bundle -- which would have booted with no
+# display driver, since Active Drivers called for the new name.
+#
+# Six keys, from Default.table ("Character Major" joined in REL1: the node
+# below is made for that major, so it is the package's, not the machine's) (the payload's instance table is gone by
+# now -- the restore above wrote over it).  Everything else is emitted byte
+# for byte in place.  See pkg/osrdn-identity-keys.awk.
+#
+foreach t ($kept)
+    awk -f "$cfg/../osrdn-identity-keys.awk" "$cfg/Default.table" \
+        "$cfg/$t" > "$stash/cand-$t"
+    if ($status != 0) then
+        echo "OSRDNDisplay: could not rewrite $t's identity keys; $stash is kept"
+        exit 1
+    endif
+    #
+    # The invariant is not "same number of lines" -- a key the machine lacks
+    # is appended.  It is that everything OUTSIDE those six keys is
+    # untouched, so both sides are compared with the selected lines removed.
+    #
+    egrep -v '^"(Driver Name|Server Name|Class Names|Family|Version|Character Major)"' \
+        "$cfg/$t" > "$stash/a-$t"
+    egrep -v '^"(Driver Name|Server Name|Class Names|Family|Version|Character Major)"' \
+        "$stash/cand-$t" > "$stash/b-$t"
+    cmp -s "$stash/a-$t" "$stash/b-$t"
+    if ($status != 0) then
+        echo "OSRDNDisplay: rewriting $t changed something outside the six"
+        echo "OSRDNDisplay: identity keys; nothing moved and $stash is kept"
+        exit 1
+    endif
+    #
+    # Built and checked outside the bundle, then renamed into place, so a
+    # failure never leaves a half-written table where the driver reads one.
+    #
+    mv "$stash/cand-$t" "$cfg/$t"
+    if ($status != 0) then
+        echo "OSRDNDisplay: could not put $t back; $stash is kept"
+        exit 1
+    endif
+    chmod 444 "$cfg/$t"
+end
+
+#
+# Only now: the payload's tables that the machine did not have.  The
+# machine's SET is what counts -- a machine with only Instance1.table must
+# not silently gain an Instance0 from the package.
+#
+set present = `ls "$cfg" | grep '^Instance.*\.table$'`
+foreach t ($present)
+    set keep = 0
+    foreach k ($kept)
+        if ("$t" == "$k") set keep = 1
+    end
+    if ($keep == 0) then
+        rm -f "$cfg/$t"
+        echo "OSRDNDisplay: removed $t, which this machine did not have"
+    endif
+end
+
+rm -rf "$stash"
+echo "OSRDNDisplay: restored $#kept instance table(s)"
+exit 0

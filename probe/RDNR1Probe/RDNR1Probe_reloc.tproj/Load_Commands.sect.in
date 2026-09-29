@@ -1,0 +1,10 @@
+#
+# RDNR1Probe load commands.  tools/r1/pack_probe.py puts a fresh run id in
+# the CALL line and writes Load_Commands.sect; tools/r1/hostcheck.sh checks
+# that the result calls radeonR1Entry with one integer and nothing else, and
+# that there is no ADVERTISE (reloading an advertising module hangs
+# kern_loader).
+#
+CALL radeonR1Entry @RUNID@
+WIRE
+START

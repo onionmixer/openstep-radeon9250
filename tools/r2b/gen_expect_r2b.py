@@ -1,0 +1,543 @@
+#!/usr/bin/env python3
+"""Generate OSRDNDisplay's mode header from the host oracle (docs/R2B_IMPL_PLAN.md 7-1).
+
+  gen_expect_r2b.py            write OSRDNDisplay/OSRDNDisplay_reloc.tproj/osrdn_mode_expect.h
+  gen_expect_r2b.py --check    exit 1 unless the file on disk equals what would be written
+
+Every value is computed by tools/oracle/radeon_modeset.py AND must equal a
+value a person wrote in a plan document.  The document is not merely cited:
+the generator reads it and requires the literal to be present.  So changing
+the oracle alone, or the plan alone, stops the generator -- a generated file
+is never checked against another generated file.
+"""
+
+import importlib.util
+import os
+import re
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+PROJ = os.path.dirname(os.path.dirname(HERE))
+OUT = os.path.join(PROJ, 'OSRDNDisplay', 'OSRDNDisplay_reloc.tproj', 'osrdn_mode_expect.h')
+PLAN = os.path.join(PROJ, 'docs', 'R2_FIRST_LIGHT_PLAN.md')
+IMPL = os.path.join(PROJ, 'docs', 'R2B_IMPL_PLAN.md')
+R3 = os.path.join(PROJ, 'docs', 'R3_MULTIMODE_PLAN.md')
+DISPLAYDEFS = os.path.join(os.path.dirname(PROJ), 'ref', 'openstep', 'headers', 'NextDeveloper',
+                           'Headers', 'driverkit', 'displayDefs.h')
+MATROX = os.path.join(os.path.dirname(PROJ), 'openstep-matrox-remade', 'OSMGADisplay',
+                      'OSMGADisplay_reloc.tproj', 'OpenStepMGAReplacementDisplay.m')
+MODE = '800x600@60'
+PIXEL_BYTES = 4
+BPP = 32
+
+
+def _load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+rm = _load('radeon_modeset_for_r2b', os.path.join(PROJ, 'tools', 'oracle', 'radeon_modeset.py'))
+FB_MAPPED = 0x800000               # osrdn_record.h OSRDN_FB_LENGTH (checked by check_r2b0_src.py)
+POST_CODE_TO_DIV = dict((code, div) for div, code in rm.XF86_POST_DIVS)   # legacy_crtc.c 1209-1216
+
+
+def human_check(values):
+    """Each (literal, document) pair must actually occur in that document."""
+    bad = []
+    texts = {}
+    for path in (PLAN, IMPL):
+        texts[path] = open(path, encoding='utf-8').read()
+    for literal, path, what in values:
+        if literal not in texts[path]:
+            bad.append('%s: %r (%s) is not written in %s'
+                       % (what, literal, what, os.path.relpath(path, PROJ)))
+    return bad
+
+
+def build():
+    mode = rm.mode_by_name(MODE)
+    rows = rm.pll_table(mode)
+    crtc = rm.rfb_crtc_words(mode)
+    xf86 = rm.xf86_crtc_words(mode)
+    pitch = rm.crtc_pitch(mode, BPP)
+    fifo = rm.fifo(mode, PIXEL_BYTES)
+    info = rm.display_info(mode, PIXEL_BYTES)
+
+    problems = []
+    if crtc != xf86:
+        problems.append('the two reference CRTC formulas disagree: %r vs %r' % (crtc, xf86))
+    if 6 not in rows or 12 not in rows:
+        problems.append('a measured refdiv is not in the table: %r' % (sorted(rows),))
+    elif rows[6]['vco'] != rows[12]['vco']:
+        problems.append('the two measured refdivs realize different VCOs')
+    for rd, r in sorted(rows.items()):
+        if not r['fb_fits']:
+            problems.append('refdiv %d feedback divider %d does not fit the field' % (rd, r['fb']))
+    keys = sorted(rows)
+    if keys != list(range(keys[0], keys[-1] + 1)):
+        problems.append('the accepted refdivs are not contiguous: %r' % (keys,))
+    digest = rm.pll_table_digest(rows)
+
+    # what a person wrote, and where; the literal must be in that document
+    written = [
+        ('%08x' % rows[6]['word'], PLAN, 'PPLL_DIV_3 refdiv 6'),
+        ('%08x' % rows[12]['word'], PLAN, 'PPLL_DIV_3 refdiv 12'),
+        ('%08x' % crtc[0], PLAN, 'CRTC_H_TOTAL_DISP'),
+        ('%08x' % crtc[1], PLAN, 'CRTC_H_SYNC_STRT_WID'),
+        ('%08x' % crtc[2], PLAN, 'CRTC_V_TOTAL_DISP'),
+        ('%08x' % crtc[3], PLAN, 'CRTC_V_SYNC_STRT_WID'),
+        ('%08x' % pitch, PLAN, 'CRTC_PITCH'),
+        ('%d' % info['dotClockRate'], PLAN, 'dotClockRate'),
+        ('%d' % info['rowBytes'], PLAN, 'rowBytes'),
+        ('%d' % info['memorySize'], PLAN, 'memorySize'),
+        ('%08x' % fifo['set_bits'], IMPL, 'GRPH_BUFFER_CNTL set bits'),
+        ('%08x' % fifo['preserve_mask'], IMPL, 'GRPH_BUFFER_CNTL preserved bits'),
+        ('%d' % rows[6]['vco'], PLAN, 'realized VCO kHz'),
+        # The table is 168 rows; a person cannot read them all, so the plan
+        # approves the RULE (bounds, count, tolerance) and a digest that
+        # changes if any row changes.  The two rows the machine measured are
+        # still written out literally, above.
+        (digest, IMPL, 'divider table digest'),
+        ('%d' % len(rows), IMPL, 'divider table row count'),
+        ('%d' % keys[0], IMPL, 'lowest accepted PPLL_REF_DIV'),
+        ('%d' % keys[-1], IMPL, 'highest accepted PPLL_REF_DIV'),
+    ]
+    problems += human_check(written)
+
+    out = []
+    out.append('/*')
+    out.append(' * osrdn_mode_expect.h - GENERATED by tools/r2b/gen_expect_r2b.py.  Do not edit.')
+    out.append(' *')
+    out.append(' * The register values the R2b first mode set writes, computed by')
+    out.append(' * tools/oracle/radeon_modeset.py and cross-checked against the values')
+    out.append(' * written in docs/R2_FIRST_LIGHT_PLAN.md and docs/R2B_IMPL_PLAN.md.')
+    out.append(' * Mode: %s, %d bpp.  The feedback divider depends on the PPLL_REF_DIV' % (MODE, BPP))
+    out.append(' * this boot happens to have, which is why there is a row per refdiv:')
+    out.append(' * the driver never writes that register.')
+    out.append(' *')
+    out.append(' * The #defines are safe anywhere.  The divider table is behind')
+    out.append(' * OSRDN_MODE_TABLES (no unit defines it since R3b-2; the R3 tables at the end')
+    out.append(' * replace it).  The whole file is guarded, and a unit that owns a table')
+    out.append(' * defines its guard BEFORE the first import that reaches this file;')
+    out.append(' * osrdn_modesel.m and osrdn_mode.m both do.')
+    out.append(' */')
+    out.append('')
+    out.append('#ifndef OSRDN_MODE_EXPECT_H')
+    out.append('#define OSRDN_MODE_EXPECT_H')
+    out.append('')
+    out.append('#define OSRDN_MODE_WIDTH        %d' % info['width'])
+    out.append('#define OSRDN_MODE_HEIGHT       %d' % info['height'])
+    out.append('#define OSRDN_MODE_ROW_BYTES    %d' % info['rowBytes'])
+    out.append('#define OSRDN_MODE_MEM_SIZE     %d' % info['memorySize'])
+    out.append('#define OSRDN_MODE_DOT_CLOCK    %d' % info['dotClockRate'])
+    out.append('#define OSRDN_MODE_REFRESH      %d' % info['refreshRate'])
+    out.append('')
+    out.append('#define OSRDN_CRTC_H_TOTAL_DISP 0x%08xU' % crtc[0])
+    out.append('#define OSRDN_CRTC_H_SYNC       0x%08xU' % crtc[1])
+    out.append('#define OSRDN_CRTC_V_TOTAL_DISP 0x%08xU' % crtc[2])
+    out.append('#define OSRDN_CRTC_V_SYNC       0x%08xU' % crtc[3])
+    out.append('#define OSRDN_CRTC_PITCH        0x%08xU' % pitch)
+    out.append('')
+    out.append('/* GRPH_BUFFER_CNTL: read, clear these, set those.  The critical point is 0')
+    out.append(' * and GRPH_CRITICAL_CNTL is cleared -- xf86\'s DispPriority == 2 path, which')
+    out.append(' * needs no floating point and no memory timing register. */')
+    out.append('#define OSRDN_FIFO_SET          0x%08xU' % fifo['set_bits'])
+    out.append('#define OSRDN_FIFO_CLEAR        0x%08xU' % fifo['clear_bits'])
+    out.append('#define OSRDN_FIFO_PRESERVE     0x%08xU' % fifo['preserve_mask'])
+    out.append('')
+    out.append('/* One row per PPLL_REF_DIV the driver may accept at entry: %d..%d,' % (keys[0], keys[-1]))
+    out.append(' * %d rows, digest %s.  The driver never writes that register (it is' % (len(rows), digest))
+    out.append(' * shared by all four divider slots), so the boot decides the row.  The')
+    out.append(' * two the machine has shown, %d and %d, both realize VCO %d kHz; the' % (6, 12, rows[6]['vco']))
+    out.append(' * others are within the tolerance in docs/R2B_IMPL_PLAN.md 14. */')
+    out.append('typedef struct {')
+    out.append('    unsigned int    refdiv;')
+    out.append('    unsigned int    div3;        /* PPLL_DIV_3: feedback and post fields */')
+    out.append('} osrdn_pll_row;')
+    out.append('')
+    out.append('#define OSRDN_PLL_ROW_COUNT     %d' % len(rows))
+    out.append('')
+    out.append('#ifdef OSRDN_MODE_TABLES')
+    out.append('static const osrdn_pll_row osrdnPllRows[OSRDN_PLL_ROW_COUNT] = {')
+    for rd in sorted(rows):
+        out.append('    { %2d, 0x%08xU },' % (rd, rows[rd]['word']))
+    out.append('};')
+    out.append('#endif')
+    out.append('')
+
+    r3text, r3problems = build_r3()
+    problems += r3problems
+    out.append(r3text)
+    out.append('#endif /* OSRDN_MODE_EXPECT_H */')
+    text = '\n'.join(out) + '\n'
+    problems += default_row_check(text)
+    return text, problems
+
+
+# ---- R3: every resolution x every format (docs/R3_MULTIMODE_PLAN.md 15-18) ----
+#
+# Emitted behind OSRDN_MODE_TABLES_R3, which no unit defines yet: R3a must not
+# change anything the R2 driver compiles (16-2 B8, tools/r3/objsnap.py).  The
+# names differ from the R2 table on purpose -- the entry's row scan takes the
+# LAST match, so a merged table under the old name would give 800x600 the
+# 1600x1200 row (16-2 B1).
+
+BYTES = (4, 2, 1)
+
+
+def doc_rows(text, first_cell):
+    """Markdown table rows of a section whose first cell is first_cell."""
+    out = []
+    for line in text.splitlines():
+        cells = [c.strip() for c in line.strip().strip('|').split('|')]
+        if cells and cells[0] == first_cell:
+            out.append(cells)
+    return out
+
+
+def section(text, heading):
+    start = text.index(heading)
+    ends = [e for e in (text.find('\n## ', start + 1), text.find('\n### ', start + 1)) if e >= 0]
+    return text[start:min(ends)] if ends else text[start:]
+
+
+def unhex(cell):
+    return int(cell.strip('`'), 16)
+
+
+def matrox_formats():
+    """osmgaFmt[] as (token, bytes, ioBpp name, ioColorSpace name, encoding, pseudo)."""
+    if not os.path.exists(MATROX):
+        return None
+    src = open(MATROX, errors='replace').read()
+    blk = src[src.index('static const OSMGAFormat osmgaFmt[] = {'):]
+    blk = blk[:blk.index('};')]
+    return re.findall(r'\{\s*"([^"]+)",\s*(\d+),\s*0x[0-9a-fA-F]+,\s*\d+,\s*(IO_\w+),\s*(IO_\w+),'
+                      r'\s*"([^"]+)",\s*(\d)\s*\}', blk)
+
+
+IO_BPP = {'IO_2BitsPerPixel': 0, 'IO_8BitsPerPixel': 1, 'IO_12BitsPerPixel': 2,
+          'IO_15BitsPerPixel': 3, 'IO_24BitsPerPixel': 4}          # displayDefs.h 18-26
+IO_CSPACE = {'IO_OneIsBlackColorSpace': 0, 'IO_OneIsWhiteColorSpace': 1,
+             'IO_RGBColorSpace': 2, 'IO_CMYKColorSpace': 5}        # displayDefs.h 30-35
+
+
+def header_enums():
+    """{name: value} for IOBitsPerPixel and IOColorSpace, read from the mirrored
+    displayDefs.h (implicit C enum numbering).  None when the file is absent."""
+    if not os.path.exists(DISPLAYDEFS):
+        return None
+    text = open(DISPLAYDEFS, errors='replace').read()
+    out = {}
+    for body in re.findall(r'typedef\s+enum\s*(?:_IO(?:BitsPerPixel|ColorSpace)\s*)?\{(.*?)\}\s*IO(?:BitsPerPixel|ColorSpace)\s*;', text, re.S):
+        n = -1
+        for item in re.sub(r'/\*.*?\*/', '', body, flags=re.S).split(','):
+            item = item.strip()
+            if not item:
+                continue
+            name, _, val = item.partition('=')
+            n = int(val.strip(), 0) if val.strip() else n + 1
+            out[name.strip()] = n
+    return out
+
+
+def r3_checks(doc):
+    """Everything a person wrote, against the oracle.  Problems, one string each."""
+    p = []
+    # 23-9 E5: the table's IOBitsPerPixel / IOColorSpace numbers are the
+    # header's enum values (a C89 constant expression cannot read the table)
+    enums = header_enums()
+    if enums is None:
+        p.append('enums: displayDefs.h is not in the mirror')
+    else:
+        for want in (IO_BPP, IO_CSPACE):
+            for name, val in want.items():
+                if enums.get(name) != val:
+                    p.append('enums: %s is %r in displayDefs.h, the generator assumes %d'
+                             % (name, enums.get(name), val))
+    # 23-9 E4: a pair is one the CRTC describes exactly -- our unit (8 pixels)
+    # and Matrox's rule ((w * bytes) % 16) both hold for every pair; the
+    # HTOTAL_CNTL word is htotal & 7
+    for m in rm.MODES:
+        if m['hdisp'] % 8:
+            p.append('pair %s: width is not a multiple of 8' % m['name'])
+        for f in rm.FORMATS:
+            if (m['hdisp'] * f['bytes']) % 16:
+                p.append('pair %s %s: Matrox would refuse it' % (m['name'], f['token']))
+            if m['hdisp'] * f['bytes'] * m['vdisp'] > FB_MAPPED:
+                p.append('pair %s %s: larger than the mapping' % (m['name'], f['token']))
+    # 18-1 timings: the upstream table nobody here wrote; the Matrox table is a
+    # copy check and must be present too (16-2 B3)
+    p += ['timings: ' + x for x in rm.check_against_netbsd()]
+    compared, diffs = rm.check_against_matrox()
+    if compared is None:
+        p.append('timings: the Matrox tree is absent -- the copy check cannot run')
+    elif diffs or compared != len(rm.MODES):
+        p.append('timings: Matrox osmgaRes compared %r rows, %r differences' % (compared, diffs))
+
+    # 18-2 divider tables
+    s182 = section(doc, '### 18-2.')
+    for m in rm.MODES:
+        rows = doc_rows(s182, m['name'].replace('@', '@'))
+        t = rm.pll_table(m)
+        ks = sorted(t)
+        holes = [k for k in range(ks[0], ks[-1] + 1) if k not in t]
+        if len(rows) != 1:
+            p.append('18-2: %d rows for %s' % (len(rows), m['name']))
+            continue
+        c = rows[0]
+        want = [str(len(t)), '%d–%d' % (ks[0], ks[-1]),
+                ', '.join(map(str, holes)) or '없음', '`%s`' % rm.pll_table_digest(t),
+                '`%08x`' % t[12]['word'], str(int(round(t[12]['dot_khz'] * 1000)))]
+        if c[1:7] != want:
+            p.append('18-2 %s: document %r, oracle %r' % (m['name'], c[1:7], want))
+    total = sum(len(rm.pll_table(m)) for m in rm.MODES)
+    if ('합계 **%d** 행' % total) not in s182:
+        p.append('18-2: the document does not state the total %d' % total)
+
+    # 18-3 CRTC words and pitch, two formulas
+    s183 = section(doc, '### 18-3.')
+    for m in rm.MODES:
+        a, b = rm.rfb_crtc_words(m), rm.xf86_crtc_words(m)
+        if a != b:
+            p.append('18-3 %s: the two CRTC formulas disagree' % m['name'])
+        rows = doc_rows(s183, m['name'])
+        want = ['`%08x`' % w for w in a] + ['`%08x`' % rm.crtc_pitch(m, 32)]
+        if len(rows) != 1 or rows[0][1:6] != want:
+            p.append('18-3 %s: document %r, oracle %r' % (m['name'], rows[0][1:6] if rows else None, want))
+        for f in rm.FORMATS:
+            if rm.crtc_pitch(m, f['bpp']) != rm.crtc_pitch(m, 32):
+                p.append('18-3 %s %s: pitch depends on depth' % (m['name'], f['token']))
+            # NetBSD rounds its stride to 64 bytes; only 800 px at 8 bpp differs
+            # (radeonfb.c 918-920), and there it programs its own wider rows
+            nb, ours = rm.netbsd_pitch(m, f['bpp']), rm.crtc_pitch(m, f['bpp']) & 0xffff
+            expect_differ = (m['hdisp'], f['bpp']) == (800, 8)
+            if (nb != ours) != expect_differ:
+                p.append('pitch %s %s: xf86 %d, NetBSD %d' % (m['name'], f['token'], ours, nb))
+
+    # 18-4 rowBytes / memorySize
+    s184 = section(doc, '### 18-4.')
+    for m in rm.MODES:
+        rows = doc_rows(s184, m['name'])
+        want = ['%d / %d' % (m['hdisp'] * b, m['hdisp'] * b * m['vdisp']) for b in BYTES]
+        if len(rows) != 1 or rows[0][1:4] != want:
+            p.append('18-4 %s: document %r, oracle %r' % (m['name'], rows[0][1:4] if rows else None, want))
+
+    # 16-3 FIFO and formats
+    s163 = section(doc, '### 16-3.')
+    for m in rm.MODES:
+        rows = doc_rows(s163, m['name'].split('@')[0].replace('x', '×'))
+        got = [unhex(re.match(r'(`[0-9a-f]{8}`)', c).group(1)) for c in rows[0][1:4]] if rows else None
+        want = [rm.fifo(m, b)['set_bits'] for b in BYTES]
+        if got != want:
+            p.append('16-3 FIFO %s: document %r, oracle %r' % (m['name'], got, want))
+        for b in BYTES:
+            if rm.fifo(m, b)['preserve_mask'] != 0x0f808080:
+                p.append('16-3 FIFO %s %d: preserve is not 0f808080' % (m['name'], b))
+    if '`0f808080`' not in s163:
+        p.append('16-3: the preserve mask is not written')
+    frows = [r for r in (doc_rows(s163, '`%s`' % f['token']) for f in rm.FORMATS)]
+    for f, rows in zip(rm.FORMATS, frows):
+        if len(rows) != 1:
+            p.append('16-3 format %s: %d rows' % (f['token'], len(rows)))
+            continue
+        c = rows[0]
+        want = [str(f['bytes']), str(f['crtc_format'])]
+        if c[1:3] != want or ('= %d' % f['io_bpp']) not in c[3] or ('= %d' % f['io_cspace']) not in c[4] \
+                or c[5] != '`%s`' % f['encoding'] or c[6] != ('예' if f['pseudo'] else '아니오'):
+            p.append('16-3 format %s: document %r' % (f['token'], c))
+        if IO_BPP.get(re.search(r'(IO_\w+)', c[3]).group(1)) != f['io_bpp'] or \
+                IO_CSPACE.get(re.search(r'(IO_\w+)', c[4]).group(1)) != f['io_cspace']:
+            p.append('16-3 format %s: enum name and value disagree' % f['token'])
+    mx = matrox_formats()
+    if mx is None:
+        p.append('formats: the Matrox tree is absent -- the format check cannot run')
+    else:
+        ours = [(f['token'], str(f['bytes']), f['io_bpp'], f['io_cspace'], f['encoding'], str(f['pseudo']))
+                for f in rm.FORMATS]
+        theirs = [(t, b, IO_BPP.get(ib), IO_CSPACE.get(ic), e, ps) for t, b, ib, ic, e, ps in mx]
+        if ours != theirs:
+            p.append('formats: ours %r, Matrox osmgaFmt %r' % (ours, theirs))
+    return p
+
+
+def decode_check(text):
+    """16-2 B2: parse the EMITTED tables and decode every slice on its own."""
+    p = []
+    res = re.findall(r'\{ "(\d+x\d+)", (\d+), (\d+)' + r', 0x[0-9a-f]{8}UL' * 5 +
+                     r', (\d+)UL, (\d+), (\d+), \d+UL \}', text)
+    pll = [(int(a), int(b, 16)) for a, b in re.findall(r'\{ *(\d+), 0x([0-9a-f]{8})U \}',
+                                                       text[text.index('osrdnPllAll['):])]
+    if len(res) != len(rm.MODES):
+        return ['decode: %d resolution rows parsed' % len(res)]
+    for (name, w, h, dot, first, count), m in zip(res, rm.MODES):
+        first, count = int(first), int(count)
+        if name != m['name'].split('@')[0]:
+            p.append('decode: row %s is not %s' % (name, m['name']))
+        rows = pll[first:first + count]
+        if len(rows) != count or not rows:
+            p.append('decode %s: slice %d+%d out of the table' % (name, first, count))
+            continue
+        if [r[0] for r in rows] != sorted(set(r[0] for r in rows)):
+            p.append('decode %s: refdivs are not strictly ascending' % name)
+        for refdiv, word in rows:
+            fb = word & rm.FB3_DIV_MASK
+            div = POST_CODE_TO_DIV.get((word >> 16) & 7)
+            vco = 27000 * fb // refdiv                 # REFCLK 27 MHz, radeonfb.c 1671-1687
+            if div is None or word & ~(rm.FB3_DIV_MASK | rm.POST3_DIV_MASK) or fb == 0 or \
+                    not (200000 <= vco <= 400000) or \
+                    abs(vco / float(div) - m['clock']) > 0.005 * m['clock']:
+                p.append('decode %s: refdiv %d word %08x gives %s kHz' % (
+                    name, refdiv, word, None if div is None else vco / float(div)))
+                break
+    return p
+
+
+def build_r3():
+    doc = open(R3, encoding='utf-8').read()
+    problems = r3_checks(doc)
+    out = []
+    out.append('/* ---- R3: every resolution x every format ----------------------------------')
+    out.append(' * docs/R3_MULTIMODE_PLAN.md 15-18, 23.  The types and counts are safe')
+    out.append(' * anywhere.  Each table has ONE owner (23-9 B4, 21-2 B10):')
+    out.append(' *   OSRDN_MODE_TABLES_SEL  resolutions and formats   osrdn_modesel.m')
+    out.append(' *   OSRDN_MODE_TABLES_R3   FIFO words and dividers   osrdn_mode.m')
+    out.append(' * New names on purpose -- the R2 entry took the LAST matching divider row,')
+    out.append(' * so these must never share a table with osrdnPllRows. */')
+    out.append('')
+    out.append('typedef struct {')
+    out.append('    const char     *name;')
+    out.append('    unsigned int    width, height;')
+    out.append('    unsigned long   hTotalDisp, hSync, vTotalDisp, vSync, pitch;')
+    out.append('    unsigned long   dotClock;           /* Hz, the refdiv 12 row */')
+    out.append('    unsigned int    pllFirst, pllCount; /* slice of osrdnPllAll */')
+    out.append('    unsigned long   htotalCntl;         /* HTOTAL_CNTL = htotal & 7 */')
+    out.append('} osrdn_res_row;')
+    out.append('')
+    out.append('typedef struct {')
+    out.append('    const char     *token;              /* the "Display Mode" ColorSpace token */')
+    out.append('    unsigned int    bytes;')
+    out.append('    unsigned int    crtcFormat;         /* CRTC_GEN_CNTL bits 8-11 */')
+    out.append('    int             ioBpp;              /* IOBitsPerPixel value */')
+    out.append('    int             ioColorSpace;       /* IOColorSpace value */')
+    out.append('    const char     *encoding;')
+    out.append('    int             pseudo;             /* LUT is the window server colormap */')
+    out.append('} osrdn_fmt_row;')
+    out.append('')
+    out.append('typedef struct {')
+    out.append('    unsigned long   set, clear, preserve;')
+    out.append('} osrdn_fifo_row;')
+    out.append('')
+    total = sum(len(rm.pll_table(m)) for m in rm.MODES)
+    out.append('#define OSRDN_RES_COUNT         %d' % len(rm.MODES))
+    out.append('#define OSRDN_FMT_COUNT         %d' % len(rm.FORMATS))
+    out.append('#define OSRDN_FIFO_BYTES_COUNT  %d     /* 4, 2, 1 */' % len(BYTES))
+    out.append('#define OSRDN_PLL_ALL_COUNT     %d' % total)
+    out.append('#define OSRDN_RES_DEFAULT       %d     /* %s, proved in R2 */' % (
+        [m['name'] for m in rm.MODES].index(MODE), MODE))
+    out.append('#define OSRDN_FMT_DEFAULT       0     /* %s */' % rm.FORMATS[0]['token'])
+    out.append('')
+    out.append('#ifdef OSRDN_MODE_TABLES_SEL')
+    out.append('static const osrdn_res_row osrdnResAll[OSRDN_RES_COUNT] = {')
+    first = 0
+    for m in rm.MODES:
+        t = rm.pll_table(m)
+        w = rm.rfb_crtc_words(m)
+        out.append('    { "%s", %d, %d, 0x%08xUL, 0x%08xUL, 0x%08xUL, 0x%08xUL, 0x%08xUL, %dUL, %d, %d, %dUL },' % (
+            m['name'].split('@')[0], m['hdisp'], m['vdisp'], w[0], w[1], w[2], w[3],
+            rm.crtc_pitch(m, 32), int(round(t[12]['dot_khz'] * 1000)), first, len(t), m['htotal'] & 7))
+        first += len(t)
+    out.append('};')
+    out.append('')
+    out.append('static const osrdn_fmt_row osrdnFmtAll[OSRDN_FMT_COUNT] = {')
+    for f in rm.FORMATS:
+        out.append('    { "%s", %d, %d, %d, %d, "%s", %d },' % (
+            f['token'], f['bytes'], f['crtc_format'], f['io_bpp'], f['io_cspace'], f['encoding'], f['pseudo']))
+    out.append('};')
+    out.append('#endif /* OSRDN_MODE_TABLES_SEL */')
+    out.append('')
+    out.append('#ifdef OSRDN_MODE_TABLES_R3')
+    out.append('/* [resolution][0 = 4 bytes, 1 = 2 bytes, 2 = 1 byte] */')
+    out.append('static const osrdn_fifo_row osrdnFifoAll[OSRDN_RES_COUNT][OSRDN_FIFO_BYTES_COUNT] = {')
+    for m in rm.MODES:
+        cells = []
+        for b in BYTES:
+            f = rm.fifo(m, b)
+            cells.append('{ 0x%08xUL, 0x%08xUL, 0x%08xUL }' % (f['set_bits'], f['clear_bits'], f['preserve_mask']))
+        out.append('    { %s },' % ', '.join(cells))
+    out.append('};')
+    out.append('')
+    out.append('static const osrdn_pll_row osrdnPllAll[OSRDN_PLL_ALL_COUNT] = {')
+    for m in rm.MODES:
+        t = rm.pll_table(m)
+        out.append('    /* %s: %d rows, digest %s */' % (m['name'], len(t), rm.pll_table_digest(t)))
+        for rd in sorted(t):
+            out.append('    { %3d, 0x%08xU },' % (rd, t[rd]['word']))
+    out.append('};')
+    out.append('#endif /* OSRDN_MODE_TABLES_R3 */')
+    text = '\n'.join(out) + '\n'
+    problems += decode_check(text)
+
+    return text, problems
+
+
+def default_row_check(text):
+    """The R3 default combination must be exactly what the R2 macros say --
+    both parsed from the EMITTED header, not recomputed."""
+    p = []
+    mac = dict((k, int(v, 0)) for k, v in re.findall(r'#define (OSRDN_\w+)\s+(0x[0-9a-f]+|\d+)U?\b', text))
+    res = re.findall(r'\{ "(\d+x\d+)", (\d+), (\d+)' + r', 0x([0-9a-f]{8})UL' * 5 +
+                     r', (\d+)UL, (\d+), (\d+), (\d+)UL \}', text)
+    fmt = re.findall(r'\{ "([^"]+)", (\d+), (\d+), (\d+), (\d+), "([^"]+)", (\d) \}', text)
+    r = res[mac['OSRDN_RES_DEFAULT']]
+    f = fmt[mac['OSRDN_FMT_DEFAULT']]
+    want = (mac['OSRDN_MODE_WIDTH'], mac['OSRDN_MODE_HEIGHT'], mac['OSRDN_CRTC_H_TOTAL_DISP'],
+            mac['OSRDN_CRTC_H_SYNC'], mac['OSRDN_CRTC_V_TOTAL_DISP'], mac['OSRDN_CRTC_V_SYNC'],
+            mac['OSRDN_CRTC_PITCH'], mac['OSRDN_MODE_DOT_CLOCK'])
+    got = (int(r[1]), int(r[2])) + tuple(int(x, 16) for x in r[3:8]) + (int(r[8]),)
+    if got != want:
+        p.append('default row %r is not the R2 macros %r' % (got, want))
+    if int(r[11]) != 0:
+        p.append('default row HTOTAL_CNTL %s, R2 wrote 0' % r[11])
+    if int(f[1]) * int(r[1]) != mac['OSRDN_MODE_ROW_BYTES'] or f[0] != 'RGB:888/32':
+        p.append('default format %r is not the R2 format' % (f,))
+    old = re.findall(r'\{ *(\d+), 0x([0-9a-f]{8})U \}',
+                     text[text.index('osrdnPllRows['):text.index('#endif', text.index('osrdnPllRows['))])
+    new = re.findall(r'\{ *(\d+), 0x([0-9a-f]{8})U \}', text[text.index('osrdnPllAll['):])
+    first, count = int(r[9]), int(r[10])
+    if len(old) != mac['OSRDN_PLL_ROW_COUNT'] or new[first:first + count] != old:
+        p.append('default divider slice is not osrdnPllRows')
+    if len(new) != mac['OSRDN_PLL_ALL_COUNT']:
+        p.append('osrdnPllAll has %d rows, count says %d' % (len(new), mac['OSRDN_PLL_ALL_COUNT']))
+    fifo = re.findall(r'\{ 0x([0-9a-f]{8})UL, 0x([0-9a-f]{8})UL, 0x([0-9a-f]{8})UL \}', text)
+    cell = fifo[mac['OSRDN_RES_DEFAULT'] * 3 + 0]
+    if tuple(int(x, 16) for x in cell) != (mac['OSRDN_FIFO_SET'], mac['OSRDN_FIFO_CLEAR'],
+                                             mac['OSRDN_FIFO_PRESERVE']):
+        p.append('default FIFO cell %r is not the R2 macros' % (cell,))
+    return p
+
+
+def main(argv):
+    text, problems = build()
+    for p in problems:
+        print('  FAIL %s' % p)
+    if problems:
+        return 1
+    if argv[1:] == ['--check']:
+        if not os.path.exists(OUT):
+            print('  FAIL %s does not exist' % os.path.relpath(OUT, PROJ))
+            return 1
+        if open(OUT, encoding='utf-8').read() != text:
+            print('  FAIL %s differs from what the oracle would write' % os.path.relpath(OUT, PROJ))
+            return 1
+        print('  ok   osrdn_mode_expect.h equals the oracle, and every value is written in a plan')
+        return 0
+    open(OUT, 'w', encoding='utf-8').write(text)
+    print('wrote %s' % os.path.relpath(OUT, PROJ))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

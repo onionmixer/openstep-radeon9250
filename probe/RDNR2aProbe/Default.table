@@ -1,0 +1,10 @@
+"Title" = "Radeon 9250 R2a MMIO and PLL Snapshot Probe";
+"Family" = "Bus";
+"Instance" = "0";
+"Version" = "0.1";
+"Driver Name" = "RDNR2aProbe";
+"Server Name" = "RDNR2aProbe";
+"IRQ Levels" = "";
+"DMA Channels" = "";
+"Memory Maps" = "";
+"I/O Ports" = "";

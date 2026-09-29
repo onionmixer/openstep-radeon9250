@@ -1,0 +1,10 @@
+"Title" = "Radeon 9250 R1 Interrogation Probe";
+"Family" = "Bus";
+"Instance" = "0";
+"Version" = "0.1";
+"Driver Name" = "RDNR1Probe";
+"Server Name" = "RDNR1Probe";
+"IRQ Levels" = "";
+"DMA Channels" = "";
+"Memory Maps" = "";
+"I/O Ports" = "";

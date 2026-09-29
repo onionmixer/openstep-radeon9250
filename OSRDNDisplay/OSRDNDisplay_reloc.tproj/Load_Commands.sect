@@ -1,0 +1,6 @@
+#
+# OSRDNDisplay load commands: WIRE only, as the Matrox replacement driver
+# (docs/R2B0_IMPL_PLAN.md S4).  No CALL, no START, no ADVERTISE -- the kernel
+# instantiates the class through Active Drivers and probe:.
+#
+WIRE

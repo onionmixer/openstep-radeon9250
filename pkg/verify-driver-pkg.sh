@@ -1,0 +1,321 @@
+#!/bin/sh
+# Unpack a built driver package and check what is actually inside it.
+#
+#   sh .../pkg/verify-driver-pkg.sh [package-dir] [source-root]
+#
+# Everything here is a thing that has gone wrong somewhere before: a nib
+# dropped by the old tar's path limit, a development table shipped with
+# diagnostics on, build residue, an architecture marker nobody staged.
+set -e
+PKGDIR="${1:-/tmp/pkgout}"
+SRC="${2:-/ndrv/openstep-radeon9250}"
+NAME=OSRDNDisplay
+PKG="$PKGDIR/$NAME.pkg"
+UNPACK=/tmp/_rdndrvverify
+D="$UNPACK/private/Drivers/i386/$NAME.config"
+# This shell runs functions in a subshell, so a counter assigned inside one
+# does not survive; the empty variable then makes `test` complain rather
+# than compare.  Record failures in a file, which does survive.
+FAILS=/tmp/_rdndrvverify.fails
+rm -f "$FAILS"; : > "$FAILS"
+
+note() { echo "  $1"; }
+bad()  { echo "  FAIL: $1"; echo "$1" >> "$FAILS"; }
+
+if [ ! -d "$PKG" ]; then echo "verify: no $PKG" >&2; exit 2; fi
+# Unpack the way INSTALLER will, which is not the same thing as the way the
+# payload was written.
+#
+# This used to read the payload back with installer_bigtar, because that is
+# what wrote it -- and so the verifier passed on an archive Installer.app
+# hangs on.  Written wrong, checked with the same wrong tool, green.  The
+# check that matters is that installer_tar can consume it, so that is the
+# tool, and a timeout is on it because the failure mode is a hang and not an
+# error.
+TAR=/NextAdmin/Installer.app/installer_tar
+rm -rf "$UNPACK"; /bin/mkdirs "$UNPACK"
+#
+# A marker file rather than `kill -0` on the pid: this shell's kill writes
+# "No such process" where the reader can see it once the job has finished
+# normally, which makes a clean run look like a broken one.
+#
+rm -f /tmp/_rdndrvpkg_done
+( cd "$UNPACK" && /usr/ucb/zcat "$PKG/$NAME.tar.Z" | "$TAR" xf - ; \
+  echo done > /tmp/_rdndrvpkg_done ) &
+waited=0
+while [ ! -f /tmp/_rdndrvpkg_done ]; do
+    sleep 1
+    waited=`expr $waited + 1`
+    if [ $waited -gt 60 ]; then
+        echo "verify: installer_tar did not finish in 60s -- this is the" >&2
+        echo "verify: long-path hang, and Installer.app would do the same" >&2
+        exit 1
+    fi
+done
+
+#
+# The .info keys Installer needs before it will even OPEN the package.
+#
+# DiskName was missing from this package from the first packaging commit,
+# and Installer answers "contains no DiskName field" and refuses -- without
+# ever reading the payload.  Every other package in this workspace had it;
+# this one did not, and nothing checked.  So the check is here, by key name,
+# rather than trusting that the file looks right.
+#
+echo "install hooks"
+for h in pre_install post_install; do
+    if [ -x "$PKG/$NAME.$h" ]; then
+        note "ok   $h is present and executable"
+    else
+        bad "$h missing or not executable -- Installer would run nothing"
+    fi
+done
+# post_install runs a program out of the installed layout, so that program
+# has to be in the payload.  Checked with lsbom rather than grep on the .bom,
+# which is binary -- grepping it answered 0 with the file present.
+if lsbom "$PKG/$NAME.bom" | grep 'osrdn-identity-keys.awk' > /dev/null; then
+    note "ok   the identity-key transform is in the payload"
+else
+    bad "osrdn-identity-keys.awk is not in the BOM -- post_install would"
+    bad "fail and the machine would keep the old driver name and version"
+fi
+
+# The one thing post_install exists for.  A hook that ships but does not
+# mention the stash is a hook that was replaced by something that forgot.
+if grep 'OSRDNDisplay.instances' "$PKG/$NAME.post_install" > /dev/null; then
+    note "ok   post_install restores the preserved instance tables"
+else
+    bad "post_install does not touch the stash -- the operator's"
+    bad "configuration would be lost on every install"
+fi
+
+echo "info keys"
+for k in Title Version Description DefaultLocation DiskName; do
+    if grep "^$k " "$PKG/$NAME.info" > /dev/null; then
+        note "ok   $k"
+    else
+        bad "$k missing from $NAME.info -- Installer will refuse to open it"
+    fi
+done
+
+echo "payload"
+for f in "${NAME}_reloc" "$NAME" Default.table Instance0.table Display.modes \
+         English.lproj/Localizable.strings; do
+    if [ -r "$D/$f" ]; then note "ok   $f"; else bad "missing $f"; fi
+done
+for n in data.classes data.dependency data.nib; do
+    if [ -r "$D/English.lproj/DisplayInspector.nib/$n" ]; then
+        note "ok   nib/$n"
+    else
+        bad "nib file dropped: $n (the old tar's 100-char path limit)"
+    fi
+done
+
+# Display.modes is a payload FILE that the presence check above already saw,
+# and that is not enough: a package built from a stale bundle ships an old
+# mode list and passes every other check here.  Compare it with the source and
+# assert the list is the complete product of the two tables.
+#
+# One version, two files.  The package's .info carries it and the panel's
+# string carries it, and nothing but this stops them drifting -- the failure
+# it prevents is a package that installs 1.2 while Configure says 1.1, which
+# nobody notices because both look right on their own.
+#
+echo "the version Configure shows"
+v=`grep '^Version ' "$PKG/$NAME.info" | sed 's/^Version //'`
+if [ -z "$v" ]; then
+    bad "no Version in $NAME.info to check the panel against"
+elif grep "^\"Version\" = \"$v\";" "$D/Default.table" > /dev/null; then
+    note "ok   Default.table says $v, matching the package"
+else
+    bad "Default.table's Version is not $v -- Configure shows that field"
+    bad "beside the driver's name, so the panel would name a version this"
+    bad "package is not"
+fi
+
+#
+# And it has to FIT.  Configure showed 49 characters of a 73-character
+# "Long Name" once, cut mid-word and taking the version with it -- a defect
+# only an eye can see, so without this it comes back.  The field is
+# proportional text and the real limit is a width, so the budget is well
+# under what got through: 40 characters, against the 32 the strings use.
+#
+awk -F'"' '/^"/ { if (length($4) > 40)
+        printf "TOOLONG %d %s\n", length($4), $2 }' \
+    "$D/English.lproj/Localizable.strings" > /tmp/_panellong
+if [ -s /tmp/_panellong ]; then
+    while read _ n k; do
+        bad "the panel string for $k is $n characters -- Configure truncates"
+        bad "and the version is what falls off the end"
+    done < /tmp/_panellong
+else
+    note "ok   every panel string is inside the 40-character budget"
+fi
+rm -f /tmp/_panellong
+
+echo "the mode list"
+if cmp -s "$SRC/OSRDNDisplay/Display.modes" "$D/Display.modes"; then
+    note "ok   Display.modes is byte-for-byte with the source copy"
+else
+    bad "Display.modes differs from the source -- rebuild the bundle"
+fi
+n=`grep -c Height "$D/Display.modes"`
+u=`sort "$D/Display.modes" | uniq | grep -c Height`
+if [ "$n" -eq 20 ]; then note "ok   20 mode entries"
+else bad "$n mode entries, wanted 20"; fi
+if [ "$n" -eq "$u" ]; then note "ok   no duplicate entries"
+else bad "duplicate mode entries ($n listed, $u distinct)"; fi
+# 5 resolutions x 4 formats, and BW:4 must be gone -- it is the old spelling
+# and Display.modes is what stops anyone selecting it anew.
+for c in "RGB:888/32" "RGB:555/16" "RGB:256/8" "BW:8"; do
+    k=`grep "$c" "$D/Display.modes" | wc -l`
+    if [ "$k" -eq 5 ]; then note "ok   $c at all 5 resolutions"
+    else bad "$c appears $k times, wanted 5"; fi
+done
+if grep 'BW:4' "$D/Display.modes" > /dev/null; then
+    bad "BW:4 is still in the mode list"
+else
+    note "ok   no BW:4 in the mode list"
+fi
+
+echo "exclusions"
+if [ -f "$D/.lastBuildTime" -o -d "$D/.lastBuildTime" ]; then
+    bad "build residue shipped"
+else
+    note "ok   no .lastBuildTime"
+fi
+if [ -f "$UNPACK/private/Drivers/i386/$NAME.config/System.config" ]; then
+    bad "a System.config leaked into the payload"
+else
+    note "ok   no System.config"
+fi
+
+echo "the release tables: the tested configuration, not the development identity"
+# docs/REL1_PACKAGING_PLAN.md D7: the five switches are FEATURE switches (the
+# names are historical) and every measurement ran with all five on --
+# "RDN R2B0 Record" is the master switch without which the driver owns the
+# display and drives nothing.  So here they must be Yes, and what must NOT
+# ship is the development title.
+for t in Default.table Instance0.table; do
+    for sw in "RDN R2B0 Record" "RDN Engine Test" "RDN VRAM Mmap" "RDN CP Test" "RDN 3D Test"; do
+        if grep "^\"$sw\" = \"Yes\";" "$D/$t" > /dev/null; then
+            note "ok   $t: $sw is Yes"
+        else
+            bad "$t: $sw is not Yes -- that is not the configuration that was measured"
+        fi
+    done
+    if grep 'R2b-0' "$D/$t" > /dev/null; then
+        bad "$t still carries the development title"
+    else
+        note "ok   $t: no development title"
+    fi
+done
+if grep 'R2b-0' "$D/English.lproj/Localizable.strings" > /dev/null; then
+    bad "Localizable.strings still names the development build"
+else
+    note "ok   Localizable.strings names the release"
+fi
+
+#
+# The names in the shipped table have to match the bundle, or the installed
+# driver is never loaded.  (The Matrox package missed this once, after a
+# rename, and installing it quietly put the mismatch on the machine.)  Here
+# Class Names happens to equal the bundle name too, but it is checked as
+# what it is -- the class compiled into the relocatable.
+#
+for k in "Driver Name" "Server Name"; do
+    if grep "\"$k\" = \"$NAME\"" "$D/Instance0.table" > /dev/null; then
+        note "ok   $k is $NAME"
+    else
+        bad "$k in the shipped table is not $NAME -- the installed driver"
+        bad "would not be the one Active Drivers names"
+    fi
+done
+if grep '"Class Names" = "OSRDNDisplay"' \
+        "$D/Instance0.table" > /dev/null; then
+    note "ok   Class Names still names the compiled class"
+else
+    bad "Class Names must name the class in the relocatable, not the bundle"
+fi
+
+echo "the reloc is the bytes the host judged"
+if [ -r "$PKGDIR/$NAME.pkg.buildid" ]; then
+    run=`awk '{print $1}' "$PKGDIR/$NAME.pkg.buildid"`
+    want=`cat "$SRC/build/r2b0/$run/R2B0RELOC_PASS" 2>/dev/null`
+    have=`/usr/bin/sum "$D/${NAME}_reloc" | awk '{print $1, $2}'`
+    if [ -n "$want" ] && [ "$want" = "$have" ]; then
+        note "ok   ${NAME}_reloc is what R2B0RELOC_PASS names (runid $run)"
+    else
+        bad "${NAME}_reloc ($have) is not what R2B0RELOC_PASS names for runid $run ($want)"
+    fi
+else
+    bad "no $NAME.pkg.buildid beside the package -- cannot tie it to a judged build"
+fi
+
+echo "architecture"
+if file "$D/${NAME}_reloc" | grep 'Mach-O preloaded' > /dev/null; then
+    note "ok   relocatable is a preloaded Mach-O"
+else
+    bad "relocatable is not a preloaded Mach-O"
+fi
+if file "$D/$NAME" | grep i386 > /dev/null; then
+    note "ok   inspector is i386"
+else
+    bad "inspector is not i386"
+fi
+
+echo "documentation"
+# Present AND current.  A package built before the documents were edited
+# passes a presence check and ships stale text; INSTALL.md gained the
+# per-mode acceleration warning after one such build.
+for f in LICENSE NOTICE INSTALL.md; do
+    case "$f" in
+    INSTALL.md) srcf="$SRC/release-packaging/INSTALL.md" ;;
+    *)          srcf="$SRC/$f" ;;
+    esac
+    D2="$UNPACK/usr/local/Documentation/OpenStep-Radeon9250/$f"
+    if [ ! -r "$D2" ]; then
+        bad "missing $f"
+    elif cmp -s "$srcf" "$D2"; then
+        note "ok   $f is byte-for-byte with the source copy"
+    else
+        bad "$f differs from the source copy -- rebuild the package"
+    fi
+done
+if grep 'Advanced Micro Devices' "$UNPACK/usr/local/Documentation/OpenStep-Radeon9250/NOTICE" > /dev/null; then
+    note "ok   the CP microcode notice travelled with it"
+else
+    bad "the CP microcode (MIT, AMD) notice is not in the shipped NOTICE"
+fi
+
+echo "the 3D node (REL1 19): made on every install, for the tables' major, mode 666"
+if grep '/usr/etc/mknod "$node" c $major 0' "$PKG/$NAME.post_install" > /dev/null && \
+   grep 'chmod 666 "$node"' "$PKG/$NAME.post_install" > /dev/null && \
+   grep 'private/dev/rdnvram0"' "$PKG/$NAME.post_install" > /dev/null; then
+    note "ok   post_install makes /dev/rdnvram0 with mknod and mode 666"
+else
+    bad "post_install does not make /dev/rdnvram0 (mknod, chmod 666)"
+fi
+# before the first-install exit, or a fresh install never reaches it
+a=`grep -n '/usr/etc/mknod' "$PKG/$NAME.post_install" | head -1 | awk -F: '{print $1}'`
+b=`grep -n 'exit 0        # first install' "$PKG/$NAME.post_install" | head -1 | awk -F: '{print $1}'`
+if [ -n "$a" ] && [ -n "$b" ] && [ $a -lt $b ]; then
+    note "ok   the node is made before the first-install exit"
+else
+    bad "the node is made after the first-install exit -- a fresh install gets none"
+fi
+for t in Default.table Instance0.table; do
+    if grep '^"Character Major" = "38";$' "$D/$t" > /dev/null; then
+        note "ok   $t: Character Major 38"
+    else
+        bad "$t does not say \"Character Major\" = \"38\" -- the node would not match"
+    fi
+done
+
+n=`wc -l < "$FAILS"`
+if [ "$n" -eq 0 ]; then
+    echo "VERIFY_DRIVER_PKG=PASS"
+else
+    echo "VERIFY_DRIVER_PKG=FAIL ($n)"
+    exit 1
+fi
