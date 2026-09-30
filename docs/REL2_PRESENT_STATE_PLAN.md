@@ -82,3 +82,10 @@ WAIT_UNTIL        2D_IDLECLEAN|HOST_IDLECLEAN
 - **부팅 뒤 카드의 첫 클라이언트 = GLQuake**(자동 기동 09:46:21 을 GLQuake 가 일으킴), 이 부팅에서 teapot·clear 0 회.  두 번째 실행(09:47:28–36)에서 **사용자 확인: 게임 화면까지 진행**.  (첫 실행 09:46:19–34 는 사용자가 다시 보자고 해 판정에 쓰지 않는다.)  수정 전 같은 조건(A–E, 재부팅 직후 D 포함)은 전부 로딩 콘솔에서 멈췄다 → **수정 확인**.
 - 계수: 300 tick, `RDN-C delegated=0`, `RDN-P rects=2212 covered=139868`.
 - 회귀: 같은 부팅에서 teapot(clear 1) 뒤 GLQuake — 두 번째 실행(09:49:18–26)에서 **사용자 확인: 게임 화면까지 진행**.  (첫 번째 09:48:24–32 는 사용자가 다시 보자고 함.)
+
+## 9. 공개 (2026-09-30)
+
+- 워크스페이스 `check-all` PASS(두 번째 실행; 첫 실행에서 잡힌 두 건 — 옛 작업 일지의 금지 출처 파일명, `G3_PRESENT_PLAN.md` 의 bare `:N` 인용 5 개 — 을 고친 뒤).
+- 공개 커밋은 HANDOFF 3 절대로: 원격 main `7a4d489` 를 부모로, `docs/review` 판정표 외 44 개를 뺀 트리 → `ed2c065`(blob 710 개 0 건).  첫 시도 `36dc86d` 는 blob 검사가 REL1 계획 23 절에 글자 그대로 적힌 검사 패턴 이름을 잡아 버렸다(비밀 아님) — 문구를 바꾸고 다시.
+- main·`v1.1` = `ed2c065`, 자산: Display 1.1(`73a0be53…`) + MesaAccel 1.0·Demos rdn.1(v1.0 자산과 SHA-256 동일).  재다운로드 `sha256sum -c` 전부 성공.
+- 함께: SDL2 `v2.32.10-openstep.5`(`903a4ff`), sdl2quake `v1.4`(split `aeaae2b`, libre 1.0 은 기존 자산).

@@ -23,7 +23,7 @@ M1o 가 고정비를 530 us 로 내렸고 **한계비는 네 칸 내내 안 움�
 
 참고가 복사하는 이유(TOCTOU)는 **우리에게도 그대로 있다** — 우리도 워드를 전수 검증하고,
 검증 뒤 클라이언트가 못 고치게 해야 한다.  그래서 **우리 커널은 이미 복사한다**:
-`osrdn_cp_stage` 가 매핑된 페이지에서 CP 블록으로 옮긴다(`OSRDNDisplay.m:1273`·`OSRDNDisplay.m:1247`).
+`osrdn_cp_stage` 가 매핑된 페이지에서 CP 블록으로 옮긴다(`OSRDNDisplay.m:1308`·`OSRDNDisplay.m:1282`).
 
     참고:  클라이언트가 **캐시 메모리**에 쓴다  → 커널이 copy_from_user → 검증 → 링
     우리:  클라이언트가 **캐시 금지 매핑**에 쓴다 → 커널이 복사        → 검증 → 링
@@ -76,14 +76,14 @@ M1o 가 고정비를 530 us 로 내렸고 **한계비는 네 칸 내내 안 움�
 하면 안 된다.  그래서 **`copyin` 을 클레임 앞에서** 한다: ioctl 핸들러가 먼저
 사용자 워드를 커널 버퍼로 옮기고, **그 다음에** `osrdn_mode_cp` 로 들어간다.
 지금 코드도 같은 모양이다 — `osrdn_cp_stage` 가 클레임 밖에서 돌고
-(`OSRDNDisplay.m:1273`·`OSRDNDisplay.m:1247`), 클레임은 그 뒤에 잡힌다.
+(`OSRDNDisplay.m:1308`·`OSRDNDisplay.m:1282`), 클레임은 그 뒤에 잡힌다.
 
 ## 7. codex 교차검토 (코딩 전)
 
 | codex 주장 | 내 검증 | 판정 |
 |---|---|---|
-| **`copyin` 은 클레임·raised spl 밖에서만 안전하다** — 페이지 폴트가 잠들 수 있다.  쥔 채 부르면 설계가 무너진다 | 우리 코드는 이미 그 모양이다: `osrdn_cp_stage` 가 `OSRDNDisplay.m:1273`·`OSRDNDisplay.m:1247` 에서 돌고 클레임은 `OSRDNDisplay.m:1295` 의 `osrdn_mode_cp` 에서 잡힌다.  **`copyin` 은 856 자리에 간다** | ✅ 채택 — 가장 중요한 조건 |
-| **곱하기 전에 `nwords` 를 묶어라**(정수 넘침) | 이미 묶는다: `n > OSRDN_R7B_MAX_WORDS` 가 `OSRDNDisplay.m:1273`, 곱은 그 뒤 | ✅ 이미 있음 |
+| **`copyin` 은 클레임·raised spl 밖에서만 안전하다** — 페이지 폴트가 잠들 수 있다.  쥔 채 부르면 설계가 무너진다 | 우리 코드는 이미 그 모양이다: `osrdn_cp_stage` 가 `OSRDNDisplay.m:1308`·`OSRDNDisplay.m:1282` 에서 돌고 클레임은 `OSRDNDisplay.m:1330` 의 `osrdn_mode_cp` 에서 잡힌다.  **`copyin` 은 856 자리에 간다** | ✅ 채택 — 가장 중요한 조건 |
+| **곱하기 전에 `nwords` 를 묶어라**(정수 넘침) | 이미 묶는다: `n > OSRDN_R7B_MAX_WORDS` 가 `OSRDNDisplay.m:1308`, 곱은 그 뒤 | ✅ 이미 있음 |
 | **`sizeof(struct) <= IOCPARM_MASK` 를 컴파일 시간에 박아라.**  128 에서 크기 필드가 **0 으로 감기고**, 4.3BSD 디스패처는 구조체를 복사하지 않고 **인자 포인터를 첫 필드 자리에 놓는다** — 조용한 런타임 오작동 | 크기는 40 바이트라 여유가 크지만, **조용한 실패 모양**이 정확히 이 프로젝트가 싫어하는 것이다 | ✅ 채택 — M1n 의 이름표처럼 `typedef char …[cond?1:-1]` |
 | **손잡이를 초기화 때 한 번 읽으면 안 된다** — 같은 프로세스 안에서 팔을 교대하려면 **시행마다** 골라야 한다 | **진짜 결함이다.**  우리 손잡이 셋(`triBatchOn`·`triHoldOn`·`triPoisonOn`)이 전부 `< 0` 일 때만 읽는 래치다(`OSRDNMesaTri.c:355`·`OSRDNMesaTri.c:781`·`OSRDNMesaTri.c:1236`).  그대로 두면 M1p 의 교대 측정이 **불가능**하다 | ✅ **채택** — 설정자를 만든다 |
 | `A B A B` 는 여전히 B 가 늘 뒤다.  **ABBA 나 무작위**로 | M1n 에서 이미 배운 것.  ABBA 로 | ✅ 채택 |
@@ -94,7 +94,7 @@ M1o 가 고정비를 530 us 로 내렸고 **한계비는 네 칸 내내 안 움�
 
 1. `osrdn_r7b_submit2` = 기존 아홉 워드 + `words`(사용자 주소).  **40 바이트**, 컴파일 시간 고정.
 2. 새 ioctl `OSRDN_R7B_IOC_SUBMIT2`.  옛 것은 그대로.
-3. 드라이버: `OSRDNDisplay.m:1273` 자리(클레임 밖)에서 `copyin(words, rdnR7bVirt, n*4)`, **그 뒤는 기존 코드 그대로**.
+3. 드라이버: `OSRDNDisplay.m:1308` 자리(클레임 밖)에서 `copyin(words, rdnR7bVirt, n*4)`, **그 뒤는 기존 코드 그대로**.
 4. 라이브러리: `osrdn_tri_set_copyin(int)` — **시행마다** 고를 수 있는 설정자.  환경 변수는 초기값만.
 5. 시험: 한 프로세스 안에서 **ABBA** 로 교대.
 

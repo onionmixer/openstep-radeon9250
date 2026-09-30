@@ -10,7 +10,7 @@
 
 | 항목 | 연 곳 | 무엇을 |
 |---|---|---|
-| K8 | `OSRDNDisplay.m:1141` · `OSRDNDisplay.m:1171-1172` · `OSRDNDisplay.m:1247` · `OSRDNDisplay.m:927` · `osrdn_cp.m:2883` · `osrdn_cp.h:291` | SUBMIT2 는 (구현 전) `n > OSRDN_R7B_WINDOW_WORDS` 를 "count" 로 거절하고 한 페이지에 `n*4` 바이트를 한 번에 copyin 했다 — 인용 줄은 K8 구현 뒤의 count 검사와 조각 copyin; r7bSubmit 은 페이지에서 508 워드씩 APPEND; copyin 은 클레임 전이어야 한다; `cpR7Stage` 는 조각마다 `cpR7Buf` 로 옮기고 4068 을 넘으면 떨어뜨린다 |
+| K8 | `OSRDNDisplay.m:1176` · `OSRDNDisplay.m:1206-1207` · `OSRDNDisplay.m:1282` · `OSRDNDisplay.m:962` · `osrdn_cp.m:2883` · `osrdn_cp.h:291` | SUBMIT2 는 (구현 전) `n > OSRDN_R7B_WINDOW_WORDS` 를 "count" 로 거절하고 한 페이지에 `n*4` 바이트를 한 번에 copyin 했다 — 인용 줄은 K8 구현 뒤의 count 검사와 조각 copyin; r7bSubmit 은 페이지에서 508 워드씩 APPEND; copyin 은 클레임 전이어야 한다; `cpR7Stage` 는 조각마다 `cpR7Buf` 로 옮기고 4068 을 넘으면 떨어뜨린다 |
 | K8 참조 | `radeon_state.c:2856` · `radeon_state.c:2866-2869` · `radeon_state_linux.c:2883-2898` | BSD·Linux 의 cmdbuf 는 **64 KiB 상한**, 커널 버퍼를 할당해 전체를 한 번에 복사(BSD `drm_alloc`+`DRM_COPY_FROM_USER`; Linux 3.10 은 `drm_buffer_alloc`+`drm_buffer_copy_from_user`, 페이지 단위 버퍼) — 둘 다 "복사한 뒤 검증·제출" 이지 페이지 하나에 묶이지 않는다 |
 | K7 | `osrdn_cp.m:2774` · `osrdn_cp.m:2722` · `verify_oracle.py:209-243` | 검증기는 루프 안에서 표면 레지스터를 마지막 값으로 덮고 **루프 뒤 한 번** 판정한다(커널·오라클 같은 모양) |
 | K5 필드 | `r200_reg.h:826-839` · `r200_reg.h:846-847` · `r200_tex.c:206-231` | MIN_FILTER 는 비트 [4:1], 밉 모드 2·3·6·7(<<1) 는 전부 **비트 2** 를 켠다, 이방성 8–11 은 비트 4; MAX_MIP_LEVEL 은 [19:16]; GL 네 밉 필터 ↔ 네 모드 1:1(r200SetTexFilter) |
@@ -23,14 +23,14 @@
 ## 2. K8 — SUBMIT2 청크 copyin (K4 의 불일치를 닫는다)
 
 ### 2-1 사실
-- CAPS 는 `maxWords = OSRDN_R7B_MAX_WORDS`(4068, `OSRDNDisplay.m:906`)를 광고하지만 SUBMIT2 는 (구현 전) `n > OSRDN_R7B_WINDOW_WORDS`(2048)를 "count" 로 거절했다(지금 `OSRDNDisplay.m:1141` 는 MAX_WORDS 만 본다) — 스테이징 페이지 `rdnR7bVirt` 가 한 장(8 KB)이고 copyin 이 `n*4` 바이트를 **한 번에** 그 페이지로 옮겼기 때문(지금은 조각 copyin, `OSRDNDisplay.m:1171-1172`).  `osrdn_r7b.h:29-33` 의 주석(구현 전 "copyin 경로의 상한 4068")은 코드와 어긋나 있었고(K8 이 고쳐 썼다), 어떤 검사기도 광고와 수락을 대조하지 않았다.
+- CAPS 는 `maxWords = OSRDN_R7B_MAX_WORDS`(4068, `OSRDNDisplay.m:941`)를 광고하지만 SUBMIT2 는 (구현 전) `n > OSRDN_R7B_WINDOW_WORDS`(2048)를 "count" 로 거절했다(지금 `OSRDNDisplay.m:1176` 는 MAX_WORDS 만 본다) — 스테이징 페이지 `rdnR7bVirt` 가 한 장(8 KB)이고 copyin 이 `n*4` 바이트를 **한 번에** 그 페이지로 옮겼기 때문(지금은 조각 copyin, `OSRDNDisplay.m:1206-1207`).  `osrdn_r7b.h:29-33` 의 주석(구현 전 "copyin 경로의 상한 4068")은 코드와 어긋나 있었고(K8 이 고쳐 썼다), 어떤 검사기도 광고와 수락을 대조하지 않았다.
 - 실기 증거: `RDN-R7B reject2 words=4052 count`, `words=2372 count`(G4-2 §12-1).  임시 조치로 라이브러리가 min(maxWords, bytes/4) 로 자기 상한을 낮췄다(`mesa/OSRDNMesaTri.c` `triRoomWords`).
-- 스테이징은 이미 조각 단위다: r7bSubmit 이 페이지에서 `CP_R7_APPEND_MAX`(508) 워드씩 `APPEND` 하고(`OSRDNDisplay.m:1247`), `cpR7Stage` 가 `cpR7Buf[4068]` 에 쌓는다(`osrdn_cp.m:2883`).  즉 **copyin 만 조각으로 바꾸면** 페이지 한 장으로 4068 까지 받는다.
+- 스테이징은 이미 조각 단위다: r7bSubmit 이 페이지에서 `CP_R7_APPEND_MAX`(508) 워드씩 `APPEND` 하고(`OSRDNDisplay.m:1282`), `cpR7Stage` 가 `cpR7Buf[4068]` 에 쌓는다(`osrdn_cp.m:2883`).  즉 **copyin 만 조각으로 바꾸면** 페이지 한 장으로 4068 까지 받는다.
 
 ### 2-2 설계
-- `r7bSubmit2`: 거절 조건에서 `n > OSRDN_R7B_WINDOW_WORDS` 를 뺀다(`n > OSRDN_R7B_MAX_WORDS` 만); magic·seed·`words == 0`("words", `OSRDNDisplay.m:1145`)·nodev 검사는 **그대로**(codex 가 잡음: 빼면 널 포인터가 copyin 까지 간다).  RESET 뒤 루프: `take = min(n − k, CP_R7_APPEND_MAX)`; `copyin(words + k*4, rdnR7bVirt, take*4)` → 실패면 status EFAULT·why "copyin"·`rdnR7bDenied++`·return(스테이징에 남은 조각은 다음 제출의 RESET 이 버린다 — `cpR7Stage` 의 RESET 이 `subWords = 0`); 성공이면 `APPEND(take, rdnR7bVirt)`.  루프 뒤는 r7bSubmit 의 꼬리(quiet 결정·stage 로그·제출)와 **같은 코드**여야 하므로 그 꼬리를 `- (void)r7bRun:(osrdn_r7b_submit *)sb staged:(int)staged` 로 떼어 두 경로가 부른다(복사본 둘은 갈린다).
-- **copyin 은 여전히 클레임 전**이다: 클레임은 `osrdn_mode_cp` 안(`OSRDNDisplay.m:927` 의 조건)이고 루프는 그 앞에서 끝난다.  페이지 폴트로 자는 것은 조각마다 일어날 수 있지만 클레임 없이 잔다.
-- 중간 EFAULT 뒤 상태(codex 지적을 원문으로 확인): `subWords` 는 성공한 조각 수, `subDropped` 0, `cpR7Buf` 는 유효한 접두부 — 두 ioctl 경로 모두 RESET 으로 시작하므로(`osrdn_cp.m:2883` 의 RESET 이 `subWords = 0`) 다음 제출이 읽을 수 없다.  **페이지 잔여물**은 RESET 이 지우지 않지만 그 페이지는 클라이언트의 매핑 자체(창 경로 `OSRDNDisplay.m:1240` 이 같은 `rdnR7bVirt` 에서 스테이지)라 클라이언트가 어차피 자기 것으로 덮어 쓴다 — 오늘의 한 번 copyin 도 부분 실패 때 같다.  `rdnR7bSubmits` 는 꼬리에서만 증가하므로 거절은 `rdnR7bDenied` 에만 센다(오늘과 같음).  cpR7Stage 의 APPEND 상한(`osrdn_cp.m:2902`: 조각 ≤ 508, 합 ≤ 4068)이 `cpR7Buf` 넘침을 이미 막는다.
+- `r7bSubmit2`: 거절 조건에서 `n > OSRDN_R7B_WINDOW_WORDS` 를 뺀다(`n > OSRDN_R7B_MAX_WORDS` 만); magic·seed·`words == 0`("words", `OSRDNDisplay.m:1180`)·nodev 검사는 **그대로**(codex 가 잡음: 빼면 널 포인터가 copyin 까지 간다).  RESET 뒤 루프: `take = min(n − k, CP_R7_APPEND_MAX)`; `copyin(words + k*4, rdnR7bVirt, take*4)` → 실패면 status EFAULT·why "copyin"·`rdnR7bDenied++`·return(스테이징에 남은 조각은 다음 제출의 RESET 이 버린다 — `cpR7Stage` 의 RESET 이 `subWords = 0`); 성공이면 `APPEND(take, rdnR7bVirt)`.  루프 뒤는 r7bSubmit 의 꼬리(quiet 결정·stage 로그·제출)와 **같은 코드**여야 하므로 그 꼬리를 `- (void)r7bRun:(osrdn_r7b_submit *)sb staged:(int)staged` 로 떼어 두 경로가 부른다(복사본 둘은 갈린다).
+- **copyin 은 여전히 클레임 전**이다: 클레임은 `osrdn_mode_cp` 안(`OSRDNDisplay.m:962` 의 조건)이고 루프는 그 앞에서 끝난다.  페이지 폴트로 자는 것은 조각마다 일어날 수 있지만 클레임 없이 잔다.
+- 중간 EFAULT 뒤 상태(codex 지적을 원문으로 확인): `subWords` 는 성공한 조각 수, `subDropped` 0, `cpR7Buf` 는 유효한 접두부 — 두 ioctl 경로 모두 RESET 으로 시작하므로(`osrdn_cp.m:2883` 의 RESET 이 `subWords = 0`) 다음 제출이 읽을 수 없다.  **페이지 잔여물**은 RESET 이 지우지 않지만 그 페이지는 클라이언트의 매핑 자체(창 경로 `OSRDNDisplay.m:1275` 이 같은 `rdnR7bVirt` 에서 스테이지)라 클라이언트가 어차피 자기 것으로 덮어 쓴다 — 오늘의 한 번 copyin 도 부분 실패 때 같다.  `rdnR7bSubmits` 는 꼬리에서만 증가하므로 거절은 `rdnR7bDenied` 에만 센다(오늘과 같음).  cpR7Stage 의 APPEND 상한(`osrdn_cp.m:2902`: 조각 ≤ 508, 합 ≤ 4068)이 `cpR7Buf` 넘침을 이미 막는다.
 - CAPS 에 `copyinWords` 필드를 더한다(= `OSRDN_R7B_MAX_WORDS`): **광고와 수락이 한 상수**가 되고, 옛 커널은 0 을 돌려주므로 라이브러리가 "페이지 상한" 으로 읽는다(라이브러리는 커널보다 자주 바뀐다).  `osrdn_r7b_caps` 는 8 워드 → 9 워드(128 B 한계 안, `check_r7b` 가 크기를 재계산).
 - 라이브러리: `triRoomWords` = copyin 경로면 min(maxWords, copyinWords ? copyinWords : bytes/4), 창 경로면 min(maxWords, bytes/4, 창 워드).  `OSRDNMesaProbeCaps` 에 `copyinWords`.
 - 로그 형식(`RDN-R7B reject2 boot=%08x words=%u %s denied=%u`)은 그대로(`check_r7b` 의 형식 규칙).
@@ -98,9 +98,9 @@
 
 | codex 주장 | 내 검증 | 판정 |
 |---|---|---|
-| K8: 거절 조건에서 `words == 0` 검사를 빼면 널 포인터가 copyin 까지 간다 | `OSRDNDisplay.m:1145` 을 열어 `else if (sb->words == 0UL)` 확인 | ✅채택 — §2-2 에 "그대로" 명시 |
-| K8: 조각 copyin 이 페이지 앞을 덮어 성공 뒤 페이지엔 마지막 조각만 남는다 | 설계상 사실; 페이지는 클라이언트 매핑(창 경로 `OSRDNDisplay.m:1240` 도 `rdnR7bVirt`) — 커널 스트림은 `cpR7Buf` | ⚖️부분채택 — 무해, §2-2 에 기록 |
-| K8: EFAULT 뒤 `subWords` 는 접두부, `subDropped` 0, 두 경로 모두 RESET 으로 시작하므로 재해석 없음; `rdnR7bSubmits` 는 꼬리에서만 증가 | `osrdn_cp.m:2883-2911` RESET/APPEND, `OSRDNDisplay.m:1288` | ✅사실 — §2-2 |
+| K8: 거절 조건에서 `words == 0` 검사를 빼면 널 포인터가 copyin 까지 간다 | `OSRDNDisplay.m:1180` 을 열어 `else if (sb->words == 0UL)` 확인 | ✅채택 — §2-2 에 "그대로" 명시 |
+| K8: 조각 copyin 이 페이지 앞을 덮어 성공 뒤 페이지엔 마지막 조각만 남는다 | 설계상 사실; 페이지는 클라이언트 매핑(창 경로 `OSRDNDisplay.m:1275` 도 `rdnR7bVirt`) — 커널 스트림은 `cpR7Buf` | ⚖️부분채택 — 무해, §2-2 에 기록 |
+| K8: EFAULT 뒤 `subWords` 는 접두부, `subDropped` 0, 두 경로 모두 RESET 으로 시작하므로 재해석 없음; `rdnR7bSubmits` 는 꼬리에서만 증가 | `osrdn_cp.m:2883-2911` RESET/APPEND, `OSRDNDisplay.m:1323` | ✅사실 — §2-2 |
 | K8: cpR7Stage 의 상한(조각 ≤ 508, 합 ≤ 4068)이 `cpR7Buf` 넘침을 막는다 | `osrdn_cp.m:2902`·`osrdn_cp.m:2907` | ✅사실 |
 | K7: (b) 의 문장이 틀렸다 — `haveT && !haveTF`(TXOFFSET 뒤 TXFORMAT 전에 draw) 도 새로 거절된다 | `osrdn_cp.m:2835-2840`·`osrdn_cp.m:2768` | ✅채택 — §3-2 문장 교체, 라이브러리 무관 확인 |
 | K7: TXFILTER 엔 존재 플래그가 없다; PP_CNTL 은 값 규칙뿐이고 텍스처 판정을 켜고 끄지 않는다 | `osrdn_cp.m:2793-2795`, `osrdn_cp.m:2624`, 대입 사슬에 PP_CNTL 없음 | ✅사실 — §3-2 에 기록 |

@@ -6,7 +6,9 @@
  * of its .config bundle; the kernel driver is the separate TOOLS
  * subproject.  Display drivers get IODisplayInspector, which already owns
  * the resolution and pixel-format picker (it lists Display.modes); this
- * subclass adds the one setting a mode string cannot carry: "Gray Levels".
+ * subclass adds the settings a mode string cannot carry: "Gray Levels", and
+ * (REL3, docs/REL3_DISPLAY_FIX_PLAN.md 3-4) "RDN HSync Adjust", the picture's
+ * horizontal position.
  * 256, 16, 4 and 2 greys are the same BW:8 scanout with the same
  * IODisplayInfo and differ only in the ramp the driver loads, so they are
  * not modes.  The same arrangement as the Matrox replacement driver's
@@ -28,10 +30,14 @@
 @interface OSRDNDisplayInspector : IODisplayInspector
 {
     id grayMatrix;      /* "Gray Levels": tags 0..3 = 256, 16, 4, 2 */
+    id hsyncSlider;     /* "RDN HSync Adjust": -16..48 pixels */
+    id hsyncValue;      /* the slider's value, as text */
 }
 
 - setTable:(NXStringTable *)instance;
 - grayChanged:sender;
+- hsyncChanged:sender;
+- showHsync:(int)v;
 
 @end
 

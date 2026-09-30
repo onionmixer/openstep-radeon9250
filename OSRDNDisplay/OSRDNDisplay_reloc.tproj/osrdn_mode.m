@@ -531,6 +531,29 @@ modeBlank(osrdn_mode_state *mode, vm_address_t base)
     osrdn_mmio_put(base, SNAP_CRTC_EXT_CNTL, v | CRTC_DIS_ALL);
 }
 
+/* REL3 (docs/REL3_DISPLAY_FIX_PLAN.md 3-2).  Every reference computes the
+ * start field as hsync_start - 8 (the table's value), and this board's picture
+ * came out right of where a G450 put it on the same capture (1-1): the sync
+ * has to move later.  How much was set on the machine by eye, live (plan 7):
+ * 0 left a band on the left, 13 one on the right, 7 neither.  The bounds keep
+ * the whole sync inside the row's blanking, in the table's own terms. */
+unsigned long
+osrdn_mode_hsync_word(unsigned long hTotalDisp, unsigned long hSync, long adj, int *refused)
+{
+    long hdisp, htotal, start, width;
+
+    hdisp = ((long)((hTotalDisp >> 16) & 0x1ffUL) + 1L) * 8L;
+    htotal = ((long)(hTotalDisp & 0x3ffUL) + 1L) * 8L;
+    start = (long)(hSync & 0x1fffUL);
+    width = (long)((hSync >> 16) & 0x3fUL) * 8L;
+    if (start + adj < hdisp - 8L || start + adj + width > htotal - 8L) {
+        *refused = 1;
+        return hSync;
+    }
+    *refused = 0;
+    return (hSync & ~0x1fffUL) | ((unsigned long)(start + adj) & 0x1fffUL);
+}
+
 static void
 modeCrtc(osrdn_mode_state *mode, vm_address_t base)
 {
@@ -541,7 +564,9 @@ modeCrtc(osrdn_mode_state *mode, vm_address_t base)
     osrdn_mmio_put(base, SNAP_CRTC_EXT_CNTL,
                    CRTC_DIS_ALL | XCRT_CNT_EN | VGA_ATI_LINEAR | CRTC_CRT_ON);
     osrdn_mmio_put(base, SNAP_CRTC_H_TOTAL_DISP, r->hTotalDisp);
-    osrdn_mmio_put(base, SNAP_CRTC_H_SYNC, r->hSync);
+    osrdn_mmio_put(base, SNAP_CRTC_H_SYNC,
+                   osrdn_mode_hsync_word(r->hTotalDisp, r->hSync, mode->hsyncAdj,
+                                         &mode->hsyncRefused));
     osrdn_mmio_put(base, SNAP_CRTC_V_TOTAL_DISP, r->vTotalDisp);
     osrdn_mmio_put(base, SNAP_CRTC_V_SYNC, r->vSync);
     osrdn_mmio_put(base, SNAP_CRTC_OFFSET_CNTL, 0);
@@ -763,7 +788,7 @@ modeVerify(osrdn_mode_state *mode, vm_address_t base)
 {
     const osrdn_res_row  *r = osrdn_res(mode->res);
     const osrdn_fifo_row *f = modeFifoRow(mode);
-    int                   k;
+    int                   k, refused;
 
     mode->verifyBad = 0;
     for (k = 0; k < OSRDN_SNAP_MMIO_COUNT; k++)
@@ -772,7 +797,8 @@ modeVerify(osrdn_mode_state *mode, vm_address_t base)
 
     if (mode->verifyGot[SNAP_CRTC_H_TOTAL_DISP] != r->hTotalDisp)
         mode->verifyBad++;
-    if (mode->verifyGot[SNAP_CRTC_H_SYNC] != r->hSync)
+    if (mode->verifyGot[SNAP_CRTC_H_SYNC] !=
+        osrdn_mode_hsync_word(r->hTotalDisp, r->hSync, mode->hsyncAdj, &refused))
         mode->verifyBad++;
     if (mode->verifyGot[SNAP_CRTC_V_TOTAL_DISP] != r->vTotalDisp)
         mode->verifyBad++;
@@ -820,60 +846,29 @@ modeVerify(osrdn_mode_state *mode, vm_address_t base)
 }
 
 /*
- * Step 10, the test pattern, for the chosen resolution and format.  Written
- * into the framebuffer the class mapped, while the CRTC is still blanked.
- * Four bands top to bottom with a left-to-right ramp, and a mark in each
- * corner: a wrong pitch shears the bands, a wrong offset moves the marks, a
- * wrong byte order swaps the colours.
+ * Step 10, black, for the chosen resolution and format.  Written into the
+ * framebuffer the class mapped, while the CRTC is still blanked.
+ *
+ * REL3 (docs/REL3_DISPLAY_FIX_PLAN.md 3-1): this was the R3 test pattern --
+ * bands, ramps and corner marks for the operator's look at first light.  Its
+ * colours showed through until the window server had drawn the whole screen
+ * (the login panel came up over it), so the boot now leaves the screen black.
+ * Zero is black in every format at this point: 16 and 32 bpp are direct
+ * colour, and the 8-bit LUT the entry has just loaded is the identity ramp
+ * (modeLutMake), index 0 black, for RGB:256/8 and BW:8 alike.
  *
  * Every write is a 32-bit word (the one framebuffer accessor this module has,
- * RDNR2aMMIO.m): a 16-bit pixel format packs two pixels into a word and an
- * 8-bit one four, the first pixel in the low half -- the aperture does no
- * byte swap (step 0's SURFACE_CNTL gate) and the CPU is little-endian.  Every
- * width is a multiple of 8, so a word never crosses the end of a row, and the
- * last write ends exactly at memorySize (python, docs/R3_MULTIMODE_PLAN.md 23-9).
- *
- * Pixels: 32 bpp 0x00RRGGBB; 16 bpp 555 (-RRRRRGGGGGBBBBB); 8 bpp the index,
- * which is a grey level under the linear LUT R3b-2a loads.
+ * RDNR2aMMIO.m).  Every width is a multiple of 8, so a word never crosses the
+ * end of a row, and the last write ends exactly at memorySize (python,
+ * docs/R3_MULTIMODE_PLAN.md 23-9).
  */
-static unsigned long
-modePixel(unsigned int bytes, unsigned long x, unsigned long y,
-          unsigned long width, unsigned long height)
-{
-    unsigned long ramp, band, r = 0, g = 0, b = 0;
-
-    ramp = (x * 255UL) / (width - 1UL);             /* 0..255 for every width */
-    band = y / (height / 4UL);
-    if ((x < 16UL || x >= width - 16UL) && (y < 16UL || y >= height - 16UL)) {
-        r = 255UL;                                  /* the corner marks: magenta */
-        b = 255UL;
-        if (bytes == 1)
-            return 255UL;                           /* 8 bpp: the brightest index */
-    } else if (bytes == 1) {
-        return (band == 1UL) ? (255UL - ramp) : ramp;   /* the second band runs backwards */
-    } else if (band == 0UL) {
-        r = ramp;
-    } else if (band == 1UL) {
-        g = ramp;
-    } else if (band == 2UL) {
-        b = ramp;
-    } else {
-        r = ramp;
-        g = ramp;
-        b = ramp;
-    }
-    if (bytes == 2)
-        return ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
-    return (r << 16) | (g << 8) | b;
-}
-
 void
-osrdn_mode_pattern(const osrdn_mode_state *mode, vm_address_t fb)
+osrdn_mode_black(const osrdn_mode_state *mode, vm_address_t fb)
 {
     const osrdn_res_row *res = osrdn_res(mode->res);
     const osrdn_fmt_row *fmt = osrdn_fmt(mode->fmt);
-    unsigned long        x, y, width, height, rowBytes, word;
-    unsigned int         bytes, per, i;
+    unsigned long        x, y, width, height, rowBytes;
+    unsigned int         bytes, per;
 
     if (res == 0 || fmt == 0)
         return;
@@ -882,14 +877,9 @@ osrdn_mode_pattern(const osrdn_mode_state *mode, vm_address_t fb)
     bytes = fmt->bytes;
     per = 4U / bytes;                               /* pixels in one 32-bit word */
     rowBytes = width * bytes;
-    for (y = 0; y < height; y++) {
-        for (x = 0; x < width; x += per) {
-            word = 0;
-            for (i = 0; i < per; i++)
-                word |= modePixel(bytes, x + i, y, width, height) << (i * bytes * 8U);
-            rdnMmioWrite32(fb, (unsigned int)(y * rowBytes + x * bytes), word);
-        }
-    }
+    for (y = 0; y < height; y++)
+        for (x = 0; x < width; x += per)
+            rdnMmioWrite32(fb, (unsigned int)(y * rowBytes + x * bytes), 0);
 }
 
 /* ---- one sequence at a time ------------------------------------------------
@@ -1032,14 +1022,11 @@ modeEnterBody(osrdn_mode_state *mode, vm_address_t base, vm_address_t fb)
     modePalette(mode, base, modeLut);
     mode->step = 10;
     if (fb != 0 && !mode->skipShow)
-        osrdn_mode_pattern(mode, fb);
+        osrdn_mode_black(mode, fb);
     mode->step = 11;
     modeUnblank(mode, base);
 
-    /* Read back BEFORE the operator's look, not after (12-8).  Two reasons:
-     * the evidence is then already in the state struct if the caller gives up
-     * on us during the wait, and a mode that did not take is not left on the
-     * screen for two seconds -- it is reverted at once. */
+    /* Read back, and revert at once a mode that did not take (12-8). */
     mode->step = 12;
     modeVerify(mode, base);
     if (mode->verifyBad) {
@@ -1049,9 +1036,10 @@ modeEnterBody(osrdn_mode_state *mode, vm_address_t base, vm_address_t fb)
         return 0;
     }
 
+    /* step 13 was the operator's two-second look at the test pattern; REL3
+       (docs/REL3_DISPLAY_FIX_PLAN.md 3-1) removed both.  The number stays so
+       a live entry still ends at step 14, as every log and judge expects. */
     mode->step = 13;
-    if (!mode->skipShow)
-        (void)modeWaitUs(mode, MODE_SHOW_US, &mode->wShow);
     mode->step = 14;
     return 1;
 }
@@ -1403,6 +1391,49 @@ osrdn_mode_cycle(osrdn_mode_state *mode, vm_address_t base, vm_address_t fb)
        released (modeReleaseOrWork), so the shutdown path keeps the behaviour
        the machine has already proved */
     return live;
+}
+
+/* REL3 3-2 5: move the live mode's sync, for calibrating against a picture.
+ * The engine's claim protocol, and nothing else: one register written and
+ * read back, no revert, no re-entry.  Allowed while the CP runs -- the CP
+ * never touches the CRTC timing registers (the plan's X6) and the claim keeps
+ * our own CP operations out.  A re-entry later (a cycle) writes the same word,
+ * since it reads hsyncAdj; a revert puts back the snapshot's word. */
+int
+osrdn_mode_hsync(osrdn_mode_state *mode, vm_address_t base, long adj,
+                 unsigned long *word, unsigned long *got)
+{
+    const osrdn_res_row *r;
+    int                  rc, refused;
+
+    *word = 0;
+    *got = 0;
+    if (base == 0)
+        return MODE_HSYNC_NOT_LIVE;
+    if (!modeClaim(mode))
+        return MODE_HSYNC_BUSY;
+    mode->kernelRevertSeen = 0;
+    mode->noSleep = 1;                  /* called from setIntValues, as the engine's
+                                           wrapper is: an owed revert must spin */
+    mode->skipShow = 1;
+    mode->wantRevertCheck = 0;
+    r = osrdn_res(mode->res);
+    if (!mode->snapshotValid || !mode->modeWritten || r == 0) {
+        rc = MODE_HSYNC_NOT_LIVE;
+    } else {
+        *word = osrdn_mode_hsync_word(r->hTotalDisp, r->hSync, adj, &refused);
+        if (refused) {
+            rc = MODE_HSYNC_RANGE;
+        } else {
+            mode->hsyncAdj = adj;
+            mode->hsyncRefused = 0;
+            osrdn_mmio_put(base, SNAP_CRTC_H_SYNC, *word);
+            *got = osrdn_mmio_get(base, SNAP_CRTC_H_SYNC);
+            rc = (*got == *word) ? MODE_HSYNC_SET : MODE_HSYNC_READBACK;
+        }
+    }
+    modeFinish(mode, base);
+    return rc;
 }
 
 int

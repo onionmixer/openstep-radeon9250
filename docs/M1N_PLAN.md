@@ -36,7 +36,7 @@ op 를 하나 더 넣는 쪽이 표면이 훨씬 작다.
 | 2 | `osrdn_cp_state` 에 `int quiet; unsigned long quietSwallowed;` | 2 |
 | 3 | `cpQuiet(c, arg)` — 플래그만 세운다.  **로그는 안 찍는다**(규칙 `r5-quiet` 가 `osrdn_cp.m` 의 `IOLog` 를 금지한다) | ~6 |
 | 4 | 디스패치에 `else if (op == CP_OP_QUIET)` 한 줄 | 1 |
-| 5 | r7b 제출 경로(`OSRDNDisplay.m:1297-1323`)의 두 `IOLog` 를 `if (!rdnCp.quiet)` 로 감싸고, 삼킨 수를 센다 | ~6 |
+| 5 | r7b 제출 경로(`OSRDNDisplay.m:1332-1358`)의 두 `IOLog` 를 `if (!rdnCp.quiet)` 로 감싸고, 삼킨 수를 센다 | ~6 |
 | 6 | `osrdn_cp_lines` 의 상태 줄에 `quiet=` 와 `swallowed=` 를 덧붙인다 | 2 |
 | 7 | op 도구와 `cpOpNames[]` 에 이름 `quiet` | 2 |
 
@@ -62,7 +62,7 @@ op 를 하나 더 넣는 쪽이 표면이 훨씬 작다.
 
 | | 질문 | 어떻게 |
 |---|---|---|
-| Q1 | `CP_OP_LAST` 를 쓰는 자리 전부 | grep — `osrdn_cp.m:4192`·`osrdn_cp.m:4266`, `osrdn_modelog.m:252`·`osrdn_modelog.m:266` 를 이미 봤다.  코딩 전에 **전수로 다시** |
+| Q1 | `CP_OP_LAST` 를 쓰는 자리 전부 | grep — `osrdn_cp.m:4192`·`osrdn_cp.m:4266`, `osrdn_modelog.m:254`·`osrdn_modelog.m:268` 를 이미 봤다.  코딩 전에 **전수로 다시** |
 | Q2 | `rdnCp.quiet` 를 r7b 경로에서 읽어도 되나 (`osrdn_mode_cp` 가 그 구조체를 덮어쓰지 않나) | `OSRDNDisplay.m` 이 `&rdnCp` 를 **살아 있는 상태로** 넘기고 `&rdnCpCopy` 를 따로 받는 것을 확인했다.  코딩 전에 `osrdn_mode_cp` 본문으로 확정 |
 | Q3 | 끈 상태에서 M1d~M1k 판정기가 도는가 | 그 판정기들은 시험의 stdout 만 읽는다(M1m 에서 확인).  **다시 확인**한다 |
 | Q4 | 기대 이득은 | 포화 상태에서 **0.73 ms 중 얼마**인지는 모른다 — ioctl 자체와 열고 닫기(36 us)가 같이 들어 있다.  **예측하지 않고 잰다**(M1m 에서 codex 가 짚은 그대로) |
@@ -86,11 +86,11 @@ INJECT 뿐이다.  그러므로 **14 에 명시 분기를 주면 아무 op 도 �
 
 **Q2 — `rdnCp` 는 살아 있는 상태가 맞다.**  `osrdn_mode_cp(mode, base, cp, …, copy)` 가
 `cp` 를 그대로 `osrdn_cp_run` 에 넘겨 **고치고**, 끝에 `*copy = *cp` 로 스냅샷만 뜬다
-(`osrdn_mode.m:1439-1473`).  그러므로 한 op 에서 세운 `cp->quiet` 는 다음 ioctl 에서
+(`osrdn_mode.m:1470-1504`).  그러므로 한 op 에서 세운 `cp->quiet` 는 다음 ioctl 에서
 읽힌다.
 
 덧붙여 읽어서 알게 된 것: `osrdn_mode_cp` 는 `STOP`·`RECORD`·`REC3D` 가 아닌 op 에
-`snapshotValid && modeWritten` 을 요구한다(`osrdn_mode.m:1456-1458`).  그러니 **QUIET 은
+`snapshotValid && modeWritten` 을 요구한다(`osrdn_mode.m:1487-1489`).  그러니 **QUIET 은
 모드가 써진 뒤에만 듣는다** — 정상 부팅에서는 문제가 없고, 아니면 `CP_RC_NOT_LIVE` 로
 정직하게 실패한다.
 
@@ -103,7 +103,7 @@ INJECT 뿐이다.  그러므로 **14 에 명시 분기를 주면 아무 op 도 �
 | **`cpRefuse` 는 `c->rc` 를 안 세운다** → 거절된 연산이 앞 연산의 `rc` 를 물고 있을 수 있다 | 사실이다(`cpRefuse` 는 `why`·`gateValue` 만 세우고 0 을 반환).  `cpRefused` 는 `CP_RC_REFUSED` 를 반환하지만 디스패치의 거절 분기는 `(void)cpRefuse(...)` 를 쓴다 | ✅ 사실 — **이 칸에서는 안 고친다**(기존 판정기들의 기대를 바꾼다).  기록해 두고 따로 다룬다 |
 | C89 고정 크기 배열이라 이름 한 칸을 빠뜨리면 **조용히 널 포인터**가 된다 | 맞다.  칸 수가 `CP_OP_LAST + 1` 이라 모자라면 0 으로 채워진다 | ✅ 채택 — **소스 규칙으로** 칸 수와 마지막 이름을 센다 |
 | 플래그가 **무기한**이다 — 도구가 죽으면 로그가 영영 꺼진 채 남는다 | 우리 러너는 끄고 켜지만, 죽으면 그렇다 | ✅ 채택 — **커널이 강제하는 임대**: `QUIET` 이 `len` 을 예산으로 받고, 그만큼의 제출을 삼킨 뒤 **스스로 켜진다** |
-| 두 로그 호출 사이에 플래그가 바뀌면 하나만 나갈 수 있다 | `begin` 줄은 **claim 밖에서** 찍힌다(`OSRDNDisplay.m:1289` 주석: 행을 오프라인에 두려고 일부러) | ✅ 채택 — 제출당 **한 번만 읽어** 지역 변수에 담고 두 결정에 같은 값을 쓴다 |
+| 두 로그 호출 사이에 플래그가 바뀌면 하나만 나갈 수 있다 | `begin` 줄은 **claim 밖에서** 찍힌다(`OSRDNDisplay.m:1324` 주석: 행을 오프라인에 두려고 일부러) | ✅ 채택 — 제출당 **한 번만 읽어** 지역 변수에 담고 두 결정에 같은 값을 쓴다 |
 | 끄기 전에 **로그 소비자를 전수 조사**하라 | M1m 에서 했다(M1 판정기는 드라이버 로그를 안 읽는다).  Q3 로 다시 한다 | ✅ 채택 |
 
 **그래서 §3 을 고친다**: 와일드카드를 없애고, `QUIET` 에 **예산**을 주고, 플래그는

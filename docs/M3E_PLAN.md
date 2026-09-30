@@ -52,7 +52,7 @@ depth 1, 64 × 64, 고정 워드 46 개가 표와 일치 — python 대조).  �
 
 사본 크기: `plane` 4 × 256 워드 등으로 약 4.6 KB 이상(python) — 이미 있는 정적 `rdnCpCopy` 와 같은 크기, 스택이 아니라 정적.
 
-거절된 RECORD 의 모양: `osrdn_cp_run` 은 `c->rc = CP_RC_REFUSED`(`osrdn_cp.m:4127`)로 시작하고 걸쇠면 `why = CP_WHY_LATCHED` 로 끝난다.  `osrdn_mode_cp` 는 RECORD 를 NOT_LIVE 검사에서 뺀다(`osrdn_mode.m:1456`).  그래서 조건 `live == CP_RC_REFUSED && rdnCpCopy.why == CP_WHY_LATCHED` 가 성립한다.
+거절된 RECORD 의 모양: `osrdn_cp_run` 은 `c->rc = CP_RC_REFUSED`(`osrdn_cp.m:4127`)로 시작하고 걸쇠면 `why = CP_WHY_LATCHED` 로 끝난다.  `osrdn_mode_cp` 는 RECORD 를 NOT_LIVE 검사에서 뺀다(`osrdn_mode.m:1487`).  그래서 조건 `live == CP_RC_REFUSED && rdnCpCopy.why == CP_WHY_LATCHED` 가 성립한다.
 
 ## 5. 구현·검증 (이 부팅, CP 걸쇠 상태에서)
 

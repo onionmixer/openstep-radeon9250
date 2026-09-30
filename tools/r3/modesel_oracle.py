@@ -87,6 +87,23 @@ def display_modes_lines():
     return out
 
 
+HSYNC_MIN, HSYNC_MAX, HSYNC_DEFAULT = -16, 48, 7
+
+
+def hsync(text):
+    """(pixels, refused) for "RDN HSync Adjust" (docs/REL3_DISPLAY_FIX_PLAN.md 3-2 4):
+    an optional sign and one to three digits, nothing else, in -16..48."""
+    import re
+    if text is None:
+        return HSYNC_DEFAULT, 0
+    if not re.fullmatch(r'[+-]?[0-9]{1,3}', text):
+        return HSYNC_DEFAULT, 1
+    v = int(text)
+    if not HSYNC_MIN <= v <= HSYNC_MAX:
+        return HSYNC_DEFAULT, 1
+    return v, 0
+
+
 def gray(text):
     """(levels, refused) for a "Gray Levels" string: exact 256/16/4/2 only."""
     if text is None:

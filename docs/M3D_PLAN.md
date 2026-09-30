@@ -32,8 +32,8 @@
 | codex 주장 | 내 검증 | 판정 |
 |---|---|---|
 | 독 모드는 `triSubmit` 첫머리에서 `triDest[0]` 을 덮는다 | `OSRDNMesaTri.c:871-872` 열어 확인 (codex 는 474 라 적음) | ⚖️ 사실, 줄번호 틀림. 붙잡은 것은 커널이 **받은** 것이므로 목적에 맞다 |
-| 복사 모드에서 커널은 `copyin` 으로 자기 페이지에 복사할 뿐 사용자 버퍼에 쓰지 않는다 | `OSRDNDisplay.m:1171-1172` copyin(src=sb->words + k*4, dst=rdnR7bVirt; G4-4 K8 뒤 조각 단위), `OSRDNDisplay.m:1240` `const unsigned *w`; `bzero/memset/bcopy` grep 0 건 | ✅ |
-| `copyin` 이 중간에 실패하면 커널 페이지와 우리 사본이 다르다 | `OSRDNDisplay.m:1171-1175` — 그 경우 검증·제출 없이 "copyin" 으로 거절 | ⚖️ 사실이나, 그때 카드는 아무것도 안 받았으므로 사본은 "보내려던 것" 으로 충분 |
+| 복사 모드에서 커널은 `copyin` 으로 자기 페이지에 복사할 뿐 사용자 버퍼에 쓰지 않는다 | `OSRDNDisplay.m:1206-1207` copyin(src=sb->words + k*4, dst=rdnR7bVirt; G4-4 K8 뒤 조각 단위), `OSRDNDisplay.m:1275` `const unsigned *w`; `bzero/memset/bcopy` grep 0 건 | ✅ |
+| `copyin` 이 중간에 실패하면 커널 페이지와 우리 사본이 다르다 | `OSRDNDisplay.m:1206-1210` — 그 경우 검증·제출 없이 "copyin" 으로 거절 | ⚖️ 사실이나, 그때 카드는 아무것도 안 받았으므로 사본은 "보내려던 것" 으로 충분 |
 | 창 모드 ioctl 은 메타데이터만 넘기고 `triDest` 를 건드리지 않는다 | `OSRDNMesaTri.c:992-994` | ✅ |
 | `triBatchReset` 은 붙잡는 자리 뒤다 | 구현에서 `triKeepFailed` 를 `triBatchReset()` 앞에 둠 | ✅ |
 

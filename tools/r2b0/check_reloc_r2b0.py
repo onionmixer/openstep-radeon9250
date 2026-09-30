@@ -67,7 +67,8 @@ CALL_RE = re.compile(r'^call[a-z]*\s+(?:\*)?(?:0x)?([0-9a-f]+)$')
 
 # Who may reach the hardware.  Read off the source: the mode module writes
 # through osrdn_snap.m's accessors and nowhere else, its one direct use of a
-# helper is the framebuffer test pattern, and the class file touches neither
+# helper is the framebuffer blackening (REL3; the R3 test pattern before it), and
+# the class file touches neither
 # (docs/R2B_IMPL_PLAN.md 12-5, tools/r2b/check_r2b_src.py writes-through-accessors).
 # R4 (docs/R4_ENGINE_PLAN.md 12, 13 #1 #4): the engine unit reaches its
 # registers directly, and the read-only PLL peek selects and restores the index.
@@ -103,7 +104,7 @@ CALL_WANT = {
                         '_osrdn_pll_peek', '_osrdn_engine_vram_reach'] + ENGINE_CALLERS + CP_READERS,
     '_rdnMmioWrite8':  ['_pllGroup', '_osrdn_pll_get', '_osrdn_pll_put', '_osrdn_snap_take',
                         '_osrdn_pll_peek'] + CP_BYTE_WRITERS,
-    '_rdnMmioWrite32': ['_pllGroup', '_osrdn_mode_pattern', '_osrdn_mmio_put',
+    '_rdnMmioWrite32': ['_pllGroup', '_osrdn_mode_black', '_osrdn_mmio_put',
                         '_osrdn_palette_put', '_osrdn_pll_put', '_osrdn_snap_take',
                         '_osrdn_palette_get'] + ENGINE_CALLERS + CP_WRITERS,
     '_osrdn_inb':      ['_vgaSnapshot', '_vgaTake', '_osrdn_vga_put'],

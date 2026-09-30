@@ -65,6 +65,10 @@ extern int copyin(const void *from, void *to, unsigned int n);
 #define OSRDN_RECORD_KEY    "RDN R2B0 Record"
 #define OSRDN_MODE_KEY      "Display Mode"          /* what Configure writes (R3b-2) */
 #define OSRDN_GRAY_KEY      "Gray Levels"           /* BW:8 only (R3b-2b, docs/R3_MULTIMODE_PLAN.md 24-5) */
+#define OSRDN_HSYNC_KEY     "RDN HSync Adjust"      /* REL3: pixels, the inspector writes it
+                                                       (docs/REL3_DISPLAY_FIX_PLAN.md 3-2 4) */
+#define OSRDN_HSYNC_PARAM   "RDNRel3HSync"          /* REL3: {HSYNC_MAGIC, adj}, the live move (3-2 5) */
+#define OSRDN_HSYNC_MAGIC   0x48535943U             /* "HSYC" */
 #define OSRDN_BRIGHT_LINES  8UL                     /* brightness lines logged per boot: autodim
                                                        repeats the call (24-5) */
 #define OSRDN_RECORD_PARAM  "RDNR2b0Record"
@@ -330,7 +334,7 @@ rdnDevNotSupported(void)
     osrdn_modesel sel;
     const osrdn_res_row *res;
     const osrdn_fmt_row *fmt;
-    int k, grayRefused;
+    int k, grayRefused, hsyncRefused;
     unsigned long winStart, winCeiling;
 
     mmioMapped = NO;
@@ -406,6 +410,10 @@ rdnDevNotSupported(void)
         [table freeString:key];
     key = (table == nil) ? 0 : [table valueForStringKey:OSRDN_GRAY_KEY];
     rdnMode.grayLevels = osrdn_modesel_gray(key, &grayRefused);
+    if (key != 0)
+        [table freeString:key];
+    key = (table == nil) ? 0 : [table valueForStringKey:OSRDN_HSYNC_KEY];
+    rdnMode.hsyncAdj = osrdn_modesel_hsync(key, &hsyncRefused);
     if (key != 0)
         [table freeString:key];
     rdnMode.res = sel.res;
@@ -500,6 +508,8 @@ rdnDevNotSupported(void)
     IOLog("RDN-R3 select boot=%08x res=%ux%u fmt=%s rdflt=%d fdflt=%d pdflt=%d gray=%d gbad=%d\n",
           (unsigned int)rdnState.nonce, res->width, res->height, fmt->token,
           sel.resDefault, sel.fmtDefault, sel.pairDefault, rdnMode.grayLevels, grayRefused);
+    IOLog("RDN-REL3 hsync boot=%08x adj=%d kbad=%d\n", (unsigned int)rdnState.nonce,
+          (int)rdnMode.hsyncAdj, hsyncRefused);
     /* LAST: nothing after this may fail, because a registered device's slot
        outlives any object that init gives back (docs/R4C_VMAP_PLAN.md 3-2) */
     [self registerVmap:deviceDescription start:winStart ceiling:winCeiling];
@@ -608,6 +618,31 @@ rdnDevNotSupported(void)
         osrdn_revert_lines(&rdnMode);
         osrdn_wait_lines(&rdnMode);
         return live ? IO_R_SUCCESS : IO_R_IO;
+    }
+    if (osrdn_name_is(parameterName, OSRDN_HSYNC_PARAM)) {
+        /* REL3 (docs/REL3_DISPLAY_FIX_PLAN.md 3-2 5): move the live mode's sync
+         * by a signed number of pixels, one register under the mode claim.
+         * The value is the table key's range; the row's own bound is
+         * osrdn_mode_hsync's.  It lasts until the next boot, which reads the
+         * key again. */
+        unsigned long word, got;
+        long adj;
+
+        if (parameterArray == 0 || count != 2)
+            return IO_R_INVALID_ARG;
+        if (parameterArray[0] != OSRDN_HSYNC_MAGIC)
+            return IO_R_INVALID_ARG;
+        if (!rdnState.recordEnabled || !mmioMapped)
+            return IO_R_UNSUPPORTED;
+        adj = (long)(int)parameterArray[1];
+        if (adj < OSRDN_HSYNC_MIN || adj > OSRDN_HSYNC_MAX)
+            return IO_R_INVALID_ARG;
+        live = osrdn_mode_hsync(&rdnMode, mmioBase, adj, &word, &got);
+        IOLog("RDN-REL3 hsync-set boot=%08x adj=%d rc=%d word=%08x got=%08x\n",
+              (unsigned int)rdnState.nonce, (int)adj, live, (unsigned int)word, (unsigned int)got);
+        if (live == MODE_HSYNC_SET)
+            return IO_R_SUCCESS;
+        return (live == MODE_HSYNC_BUSY) ? IO_R_BUSY : IO_R_IO;
     }
     if (osrdn_name_is(parameterName, OSRDN_ENGINE_PARAM)) {
         /* R4 (docs/R4_ENGINE_PLAN.md 12-3): one engine operation under the mode

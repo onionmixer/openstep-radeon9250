@@ -104,6 +104,7 @@ echo "== R3d Configure inspector =="
 run 'H0 inspector sources: C89, #import only' 'hostcheck-inspector: PASS' sh tools/r3/hostcheck_inspector.sh
 run 'H1/H2 the panel table equals the driver rule' 'test_inspector_gray: PASS' python3 tools/r3/test_inspector_gray.py
 run 'H3/H5 the shipped nib, decoded and measured' 'check_nib_r3d: PASS' python3 tools/r3/check_nib_r3d.py
+run 'REL3 the hsync panel equals the driver rule' 'test_inspector_hsync: PASS' python3 tools/rel3/test_inspector_hsync.py
 run 'H4 reloc compile-line comparison (self-test)' 'check_reloc_cclines self-test: PASS' python3 tools/r3/check_reloc_cclines.py --self-test
 run 'H7 the derived nib is on the record' 'check_notice_nib: PASS' python3 tools/r3/check_notice_nib.py
 

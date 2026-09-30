@@ -27,9 +27,9 @@ M2a·M2d 가 제출마다의 `WBINVD` 를 두 번 잤다: **−221 us**(run 7901
 | `osrdn_cp.h:650` | 필드 선언(M2e 뒤엔 `doWb`) |
 | `osrdn_cp.m:757` | **유일한 읽기** — M2e 전엔 `if (!c->noWb)`, 지금은 `if (c->doWb)` |
 | `osrdn_cp.m:2978` | **유일한 대입** — `cpNoWb` |
-| `osrdn_modelog.m:327` | 상태 줄 출력(지금은 `!c->doWb`) |
+| `osrdn_modelog.m:329` | 상태 줄 출력(지금은 `!c->doWb`) |
 
-초기화는 **없다**.  기본 0 은 `OSRDNDisplay.m:351-356` 의 **바이트 단위 0 채우기**에서
+초기화는 **없다**.  기본 0 은 `OSRDNDisplay.m:355-360` 의 **바이트 단위 0 채우기**에서
 온다 — 그 루프는 `initFromDeviceDescription` 맨 앞, `[super initFromDeviceDescription:]`
 **앞**에 있다.
 
@@ -224,9 +224,9 @@ M2d 가 `ONLY JUST … 부호만 보고 움직이지 말 것` 을 붙여 둔 것
 
 ### 7-1. 원인은 코드에 있었다
 
-`rdnDevOpen`(`OSRDNDisplay.m:125-184`)과 `rdnDevClose`(`OSRDNDisplay.m:212-236`)가
+`rdnDevOpen`(`OSRDNDisplay.m:129-188`)과 `rdnDevClose`(`OSRDNDisplay.m:216-240`)가
 **무조건 `IOLog` 한다**.  그리고 `quiet` 게이트는 **제출 경로에만** 있다
-(`OSRDNDisplay.m:1273`) — 열고닫기는 안 덮는다.
+(`OSRDNDisplay.m:1308`) — 열고닫기는 안 덮는다.
 
 그래서 노드를 **안 잡는** 팔은 제출마다 `IOLog` 를 **둘** 더 내고, 그 값은
 syslogd 가 배달 중이냐 버리는 중이냐에 따라 한 줄에 ~400 us 와 ~13 us 사이를 오간다

@@ -1,5 +1,5 @@
 Title OSRDNDisplay
-Version 1.1
+Version 1.2
 Description OPENSTEP 4.2 (i386) DriverKit display driver for the ATI Radeon 9250 (RV280, PCI 1002:5960; tested on revision 1 with 128 MiB). Five resolutions from 640x480 to 1600x1200 and four pixel formats; the greyscale format additionally takes a Gray Levels setting of 256, 16, 4 or 2, which changes only the palette. Installs the bundle into /private/Drivers/i386 and does NOT activate it: run Configure.app, add OSRDNDisplay to Active Drivers in System.config, and reboot. Recovery: type config=Default at the boot: prompt to come back with the original display driver. The bundle also carries the command processor and the 3D path the OSRDNMesaAccel package uses; 3D needs a board with at least 128 MiB, and on a smaller one the driver declines the 3D window and the display still works. Contains AMD's R200 CP microcode under its MIT notice, reproduced in /usr/local/Documentation/OpenStep-Radeon9250/NOTICE.
 DefaultLocation /
 DiskName OPENSTEP Radeon 9250 Display Intel

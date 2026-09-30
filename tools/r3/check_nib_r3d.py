@@ -9,7 +9,11 @@ H3  what Configure will wire up
     - every stock connector is still there, unchanged (the stock ten include
       displayMode 1 -> 48, without which the mode picker is gone);
     - exactly two new connectors: outlet grayMatrix 1 -> matrix, action
-      grayChanged: matrix -> 1;
+      grayChanged: matrix -> 1; and REL3's three (docs/REL3_DISPLAY_FIX_PLAN.md
+      3-4): outlet hsyncSlider 1 -> slider, action hsyncChanged: slider -> 1,
+      outlet hsyncValue 1 -> its value label;
+    - the slider's cell holds max, min, value = osrdn_hsyncpanel.h's MAX,
+      MIN, DEFAULT;
     - the matrix: one row of four cells, cell 54 x 15, spacing (4, 0), frame
       228 x 15, the selected-cell slot on the tag-0 cell;
     - cell (tag, title) pairs are osrdn_graypanel.h's table, in its order;
@@ -49,6 +53,7 @@ BUNDLE = os.path.join(PROJ, 'OSRDNDisplay')
 SHIPPED = os.path.join(BUNDLE, 'English.lproj', 'DisplayInspector.nib')
 STOCK = os.path.join(PROJ, 'build', 'stocknib', 'DisplayInspector.nib')
 GRAYPANEL = os.path.join(BUNDLE, 'osrdn_graypanel.h')
+HSYNCPANEL = os.path.join(BUNDLE, 'osrdn_hsyncpanel.h')
 INSP_H = os.path.join(BUNDLE, 'OSRDNDisplayInspector.h')
 FONT = '/usr/share/fonts/opentype/urw-base35/NimbusSans-Regular.otf'
 TEMPLATES = os.path.join(WS, 'openstep-spacesaver2ps2', 'ref', 'nibtemplates')
@@ -114,13 +119,23 @@ def signature(n, o):
     return (cls, tuple(n.frame(o)), text)
 
 
+GRAFTED = ('Matrix', 'TextField', 'Button', 'Slider')
+
+
+def hsync_panel():
+    """(min, max, default) as osrdn_hsyncpanel.h defines them"""
+    t = open(HSYNCPANEL).read()
+    get = lambda k: int(re.search(r'#define OSRDN_PANEL_HSYNC_' + k + r'\s+\(?(-?\d+)\)?', t).group(1))
+    return get('MIN'), get('MAX'), get('DEFAULT')
+
+
 def new_views(n, stock):
     """Views of the grafted kinds whose content the stock nib does not have."""
     old = [signature(stock, o) for o in stock.objs.values()
-           if o.get('cls') in ('Matrix', 'TextField', 'Button')]
+           if o.get('cls') in GRAFTED]
     out = []
     for o in n.objs.values():
-        if o.get('cls') in ('Matrix', 'TextField', 'Button'):
+        if o.get('cls') in GRAFTED:
             sig = signature(n, o)
             if sig in old:
                 old.remove(sig)
@@ -200,13 +215,36 @@ def check(n, stock, classes, dependency, insp_h):
     mat = mats[0]
     m = mat.get('oid')
     want_new = sorted([('IBOutletConnector', 'CustomObject', 'Matrix', 'grayMatrix'),
-                       ('IBControlConnector', 'Matrix', 'CustomObject', 'grayChanged:')])
+                       ('IBControlConnector', 'Matrix', 'CustomObject', 'grayChanged:'),
+                       ('IBOutletConnector', 'CustomObject', 'Slider', 'hsyncSlider'),
+                       ('IBControlConnector', 'Slider', 'CustomObject', 'hsyncChanged:'),
+                       ('IBOutletConnector', 'CustomObject', 'TextField', 'hsyncValue')])
     if sorted(left) != want_new:
         p.append('new connectors %s, want %s' % (sorted(left), want_new))
     new = [c for c in connectors(n) if c[3] in ('grayMatrix', 'grayChanged:')]
     if sorted(new) != sorted([('IBOutletConnector', OWNER, m, 'grayMatrix'),
                               ('IBControlConnector', m, OWNER, 'grayChanged:')]):
         p.append('the gray connectors do not join the owner and the new matrix: %s' % new)
+    # REL3: the slider and its value label
+    sliders = [o for o in added if o.get('cls') == 'Slider']
+    hs = [c for c in connectors(n) if c[3] in ('hsyncSlider', 'hsyncChanged:', 'hsyncValue')]
+    if len(sliders) != 1:
+        p.append('%d new sliders, want 1' % len(sliders))
+    else:
+        sl = sliders[0].get('oid')
+        vals = [c for c in hs if c[3] == 'hsyncValue']
+        if (sorted((c[0], c[1], c[2], c[3]) for c in hs if c[3] != 'hsyncValue') !=
+                sorted([('IBOutletConnector', OWNER, sl, 'hsyncSlider'),
+                        ('IBControlConnector', sl, OWNER, 'hsyncChanged:')]) or
+                len(vals) != 1 or vals[0][1] != OWNER or
+                n.obj(vals[0][2]).get('cls') != 'TextField' or n.obj(vals[0][2]) not in added):
+            p.append('the hsync connectors do not join the owner, the new slider and a new label: %s' % hs)
+        cell = [c for c in n.group(sliders[0], 'i@s')][1]
+        rng = [int(i.get('v')) for i in n.group(cell, 'dddf@d@') if i.tag == 'i'][:3]
+        lo, hi, dflt = hsync_panel()
+        if cell.get('cls') != 'SliderCell' or rng != [hi, lo, dflt]:
+            p.append('slider cell %s max/min/value %s, want %s' % (cell.get('cls'), rng, [hi, lo, dflt]))
+    new = new + hs
 
     # ---- H3: the matrix
     cells_group = n.group(mat, '@:@iiii')
@@ -242,8 +280,9 @@ def check(n, stock, classes, dependency, insp_h):
             chain.append(cur)
         if chain[:2] != [a['view'], a['box']]:
             p.append('%s %s hangs under %s, not the mode box view' % (o.get('cls'), o.get('oid'), chain[:3]))
-    if sorted(o.get('cls') for o in added) != ['Matrix', 'TextField', 'TextField']:
-        p.append('new views %s, want one matrix and two labels' % sorted(o.get('cls') for o in added))
+    if sorted(o.get('cls') for o in added) != ['Matrix', 'Slider'] + ['TextField'] * 4:
+        p.append('new views %s, want one matrix, one slider and four labels'
+                 % sorted(o.get('cls') for o in added))
 
     # ---- H3: names agree
     blk = classes_block(classes, 'OSRDNDisplayInspector')
@@ -374,7 +413,30 @@ def main():
             lb = [o for o in new_views(m, stock) if o.get('cls') == 'TextField'][0]
             [c for c in m.groups(lb)[0]][0].set('oid', anatomy(m)['content'])
 
+        def the_slider(m):
+            return [o for o in new_views(m, stock) if o.get('cls') == 'Slider'][0]
+
+        def slider_range(m, idx, v):
+            cell = [c for c in m.group(the_slider(m), 'i@s')][1]
+            set_int(m.group(cell, 'dddf@d@'), idx, v)
+
+        def relabel(old, new):
+            def fn(m):
+                for c in m.list_items(m.connectors_list()):
+                    g = [k for k in m.group(c, '@@*')] if c.get('ref') is None else []
+                    if g and g[2].get('v') == old:
+                        g[2].set('v', new)
+            return fn
+
         negatives = [
+            ('REL3: the slider max is the template\'s', mutant(lambda m: slider_range(m, 0, 400)), classes),
+            ('REL3: the slider min is 0', mutant(lambda m: slider_range(m, 1, 0)), classes),
+            ('REL3: the slider starts at 0', mutant(lambda m: slider_range(m, 2, 0)), classes),
+            ('REL3: the slider action misspelt in the nib', mutant(relabel('hsyncChanged:', 'hsyncChange:')),
+             classes),
+            ('REL3: the value outlet misspelt in the nib', mutant(relabel('hsyncValue', 'hsyncVal')), classes),
+            ('REL3: the slider outlet missing from data.classes', n,
+             classes.replace('\thsyncSlider = hsyncSlider; \n', '')),
             ('a cell title changed', mutant(lambda m: m.set_cstring(cells_of(m)[2], '8')), classes),
             ('two cell tags swapped', mutant(lambda m: (set_int(m.group(cells_of(m)[1], 'i:'), 0, 2),
                                                         set_int(m.group(cells_of(m)[2], 'i:'), 0, 1))), classes),

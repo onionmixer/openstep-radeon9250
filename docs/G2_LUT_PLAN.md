@@ -7,23 +7,23 @@
 | 항목 | 값 | 근거 |
 |---|---|---|
 | CRTC 픽셀 형식 | `want=6 got=6` (32bpp ARGB) | `RDN-R3 verify` 줄 |
-| DAC_CNTL | `ff000102` = MASK_ALL·**DAC_8BIT_EN**(bit 8)·range 2 | 같은 줄 `dac=`; `osrdn_mode.m:571-573` `modeDac` |
-| LUT 워드 배치 | `(r<<22)|(g<<12)|(b<<2)` 를 `PALETTE_30_DATA` 에 | `osrdn_mode.m:715`, `osrdn_snap.m:315`; NetBSD `radeonfb.c:2995-2996` 과 같다 |
+| DAC_CNTL | `ff000102` = MASK_ALL·**DAC_8BIT_EN**(bit 8)·range 2 | 같은 줄 `dac=`; `osrdn_mode.m:596-598` `modeDac` |
+| LUT 워드 배치 | `(r<<22)|(g<<12)|(b<<2)` 를 `PALETTE_30_DATA` 에 | `osrdn_mode.m:740`, `osrdn_snap.m:315`; NetBSD `radeonfb.c:2995-2996` 과 같다 |
 | LUT 되읽기 | `verifylut bad=0`, `xfer … lutbad=0`, `bright … lutbad=0` | 상위 8비트 전부 일치 |
 | 출력 경로 | FP_GEN_CNTL = 0 (R2a 탐침 `rdn-r2a-789467668.log:52`), 모드셋 게이트 `GATE_FPON` 이 FPON=0 을 요구 | 아날로그 DAC 출력, TMDS 18비트 패널 형식 문제 아님 |
 | WindowServer 에 알린 형식 | `IO_24BitsPerPixel`, `"--------RRRRRRRRGGGGGGGGBBBBBBBB"` | `osrdn_mode_expect.h:274`; Matrox `OpenStepMGAReplacementDisplay.m:1538` 과 같은 문자열 |
 
 ## 2. 남은 차이 하나 — LUT 에 실리는 **전송표**
 
-- WindowServer 는 `IO_DISPLAY_HAS_TRANSFER_TABLE`(`OSRDNDisplay.m:443`) 을 보고 256 항목 표를 보낸다(Matrox `TEST_STATUS.md:84` 실측).  이번 부팅: `RDN-R3 xfer n=1 count=256 … xferdata sum=4a4a9a00 first=000000ff last=ffffffff ident=0`.
+- WindowServer 는 `IO_DISPLAY_HAS_TRANSFER_TABLE`(`OSRDNDisplay.m:451`) 을 보고 256 항목 표를 보낸다(Matrox `TEST_STATUS.md:84` 실측).  이번 부팅: `RDN-R3 xfer n=1 count=256 … xferdata sum=4a4a9a00 first=000000ff last=ffffffff ident=0`.
 - python 역산: 그 합에서 Σv = **44699**(항등이면 32640).  감마 2.2 리프트 `255·(k/255)^(1/2.2)` 의 합 44824 와 거의 같다 — **어두운 쪽을 크게 올리는 곡선**이다(S3 예제의 내장 `gamma8`(`S3ProgramDAC.m:162`) 도 같은 모양: 0,15,22,27,31… 합 43334).
-- 우리 드라이버는 이 표를 **32bpp 에서도 LUT 에 그대로 싣는다**(`osrdn_mode.m:684`, `osrdn_mode.m:695-707` `modeLutMake`).  NeXT 의 S3·QVision 예제도 그렇게 한다(`S3.m:59-87` `setTransferTable:` 이 24bpp 에서도 표를 받아 `S3ProgramDAC.m:195` `setGammaTable` 로 DAC 에 싣는다).
+- 우리 드라이버는 이 표를 **32bpp 에서도 LUT 에 그대로 싣는다**(`osrdn_mode.m:709`, `osrdn_mode.m:720-732` `modeLutMake`).  NeXT 의 S3·QVision 예제도 그렇게 한다(`S3.m:59-87` `setTransferTable:` 이 24bpp 에서도 표를 받아 `S3ProgramDAC.m:195` `setGammaTable` 로 DAC 에 싣는다).
 - **Matrox 재작 드라이버는 다르다**: RGB 직접색에서는 표를 **캐시만 하고 LUT 는 선형 램프**(모드셋 `OpenStepMGAReplacementDisplay.m:4751` 의 `f->isPseudo` 조건, `OpenStepMGAReplacementDisplay.m:4775-4789` "8bpp/32bpp RGB … 256-entry ramp" `v = i`).  8bpp 의사색에서만 표를 싣는다.
 - 8비트 입력→8비트 출력 LUT 에 2.2 리프트를 걸면: k=1→15, k=2→22 … 어두운 16 단계가 출력 0–72 로 벌어지고(계단이 보인다), 밝은 56 단계(200–255)가 출력 25 단계로 눌린다.  **화면이 밝고 계조가 뭉개져 "16비트처럼" 보이는 것과 부합한다.**  Matrox 에서는 이 곡선이 걸린 적이 없다.
 
 ## 3. 재부팅 없이 확인 — 유저랜드에서 전송표를 바꿔 본다
 
-- 경로: `IODeviceMaster lookUpByDeviceName:"Display0"` → `setIntValues:… forParameter:"IOSetTransferTable" count:256` (`displayDefs.h:176` "packed RGBM", `IO_SET_TRANSFER_TABLE`).  우리 `setIntValues:` 는 CYCLE·ENGINE·RECORD 이름만 잡고 나머지는 superclass 로 넘긴다(`OSRDNDisplay.m:587`, `OSRDNDisplay.m:699-700`).  superclass 가 개수(24bpp = 256)를 검사하고 `setTransferTable:count:` 를 부른다(24-1 커널 사실).  드라이버는 곧바로 LUT 에 적용한다(이번 부팅 `xfer … applied=1`, `lutBase` 는 `mmioMapped && recordEnabled`).
+- 경로: `IODeviceMaster lookUpByDeviceName:"Display0"` → `setIntValues:… forParameter:"IOSetTransferTable" count:256` (`displayDefs.h:176` "packed RGBM", `IO_SET_TRANSFER_TABLE`).  우리 `setIntValues:` 는 CYCLE·ENGINE·RECORD 이름만 잡고 나머지는 superclass 로 넘긴다(`OSRDNDisplay.m:597`, `OSRDNDisplay.m:734-735`).  superclass 가 개수(24bpp = 256)를 검사하고 `setTransferTable:count:` 를 부른다(24-1 커널 사실).  드라이버는 곧바로 LUT 에 적용한다(이번 부팅 `xfer … applied=1`, `lutBase` 는 `mmioMapped && recordEnabled`).
 - 도구 `tools/r3/rdnxfer.m`: 텍스트 파일의 256 워드(16진)를 읽어 보낸다.  표는 호스트 python 이 만든다: `ident`(0xkkkkkkff), `g22`(감마 2.2 리프트, 되돌리기용 근사).  결과는 `RDN-R3 xfer n=2 …`/`xferdata sum=` 줄로 확인(항등이면 `ident=1`).
 - 안전: 쓰는 것은 LUT 256 항목뿐(모드·CRTC·PLL 무관).  되돌리기는 `g22` 를 다시 보내거나 재부팅.  CP·teapot 에는 영향 없음(LUT 는 스캔아웃 뒤 단계).
 - 판정: 사용자가 항등표 뒤의 화면을 보고 "Matrox 때와 같다" 면 원인 확정.
@@ -56,15 +56,15 @@
 | codex 주장 | 내 검증 | 판정 |
 |---|---|---|
 | 항등표 실험: 되돌리기가 근사(`g22`)라 정확하지 않다 | python 으로 합 `4a4a9a00` 을 재현하는 식을 탐색 → `floor(255·(k/255)^(1/2.2))` 유일 해, 묶음 합 일치 (`tools/r3/gen_xfer.py`) | ✅ 채택 — 정확한 원표를 재전송할 수 있게 함 |
-| 적용은 LUT 외에 픽셀클록 게이트·PLL 인덱스도 잠시 바꾼다 (`osrdn_mode.m:582-592`, `osrdn_mode.m:745-758`) | 원문 확인: `modePalette` 가 `VCLK_ECP_CNTL` 을 껐다 켜고 `modeLutApply` 가 인덱스를 되돌린다 — WindowServer 의 표가 부팅 때 지난 것과 같은 경로 | ⚖️ 사실, 새 위험 아님 |
-| 클레임 충돌 시 실패 대신 지연 적용 (`osrdn_mode.m:1578-1580`) | 원문 확인(`lutDeferred++`, `MODE_LUT_DEFERRED`); 이번 실행 로그 `result=1 applied=4` 로 즉시 적용 증명 | ⚖️ 사실, 이번엔 해당 없음 |
+| 적용은 LUT 외에 픽셀클록 게이트·PLL 인덱스도 잠시 바꾼다 (`osrdn_mode.m:607-617`, `osrdn_mode.m:770-783`) | 원문 확인: `modePalette` 가 `VCLK_ECP_CNTL` 을 껐다 켜고 `modeLutApply` 가 인덱스를 되돌린다 — WindowServer 의 표가 부팅 때 지난 것과 같은 경로 | ⚖️ 사실, 새 위험 아님 |
+| 클레임 충돌 시 실패 대신 지연 적용 (`osrdn_mode.m:1609-1611`) | 원문 확인(`lutDeferred++`, `MODE_LUT_DEFERRED`); 이번 실행 로그 `result=1 applied=4` 로 즉시 적용 증명 | ⚖️ 사실, 이번엔 해당 없음 |
 | 항등표로도 같게 보이면 LUT 는 원인이 아니다 | 판정 기준에 넣음 (3절) | ✅ 채택 |
 | `direct = cspace 2 && !pseudo` 가 888/32·555/16 만 고른다 (`osrdn_mode_expect.h:274`-277) | 표 행 확인: 256/8 은 `pseudo=1`, BW:8 은 색공간 1 | ✅ |
 | Xorg depth 15 는 `index*8+j` 에 같은 값 복제 (`radeon_driver.c:3326-3334`), `break` 없이 16 으로 떨어짐(`:3336`) | 원문 확인 (`drmmode_display.c:1643-1651` 도 같다) | ✅ — 555 램프 `((k>>3)*255)/31` |
-| fmt 2 는 시뮬레이터에서 진입 가능, `modeInit` 이 fmt 를 0 으로 되돌리니 시험마다 다시 지정 | `simworld2b.c:1033`(전 형식 행렬)·`simworld2b.c:386` 확인 | ✅ 채택 — 배관 시험마다 `mode.fmt = 2` |
-| `verifyLut` 는 진입이 만든 `modeLut` 과 비교하므로 어긋남 없음 (`osrdn_mode.m:1030-1031`, `osrdn_mode.m:811`) | 원문 확인 | ✅ |
-| 전 형식 행렬이 모든 형식에 `k` 램프를 강제 (`simworld2b.c:1090`, 편집 뒤 줄) | 원문 확인 → fmt 1 은 `simxLutRamp15` | ✅ 채택 |
-| stuck-LUT 시험이 색인 7 을 쓰는데 555 램프의 0–7 은 0 이라 못 잡는다 (`simworld2b.c:1443`, `simworld2b.c:1452`, 편집 뒤 줄) | 원문 확인(`palette[7] = 0`, 시뮬레이터 훅 `simworld2b.c:206`) → 색인 15 로 | ✅ 채택 |
+| fmt 2 는 시뮬레이터에서 진입 가능, `modeInit` 이 fmt 를 0 으로 되돌리니 시험마다 다시 지정 | `simworld2b.c:1036`(전 형식 행렬)·`simworld2b.c:387` 확인 | ✅ 채택 — 배관 시험마다 `mode.fmt = 2` |
+| `verifyLut` 는 진입이 만든 `modeLut` 과 비교하므로 어긋남 없음 (`osrdn_mode.m:1020-1021`, `osrdn_mode.m:837`) | 원문 확인 | ✅ |
+| 전 형식 행렬이 모든 형식에 `k` 램프를 강제 (`simworld2b.c:1093`, 편집 뒤 줄) | 원문 확인 → fmt 1 은 `simxLutRamp15` | ✅ 채택 |
+| stuck-LUT 시험이 색인 7 을 쓰는데 555 램프의 0–7 은 0 이라 못 잡는다 (`simworld2b.c:1526`, `simworld2b.c:1535`, 편집 뒤 줄) | 원문 확인(`palette[7] = 0`, 시뮬레이터 훅 `simworld2b.c:207`) → 색인 15 로 | ✅ 채택 |
 
 결과: `tools/r2b/sim_r2b.py` PASS — 베이스라인 25 검사, 변이 90 개 전부 잡힘(새 변이 2: "direct 도 표를 싣는다", "555 램프를 펴지 않는다"; 빠진 555 표 시험 대신 BW:8 에 32 항목 표를 펴는 시험으로 기존 변이 유지).
 

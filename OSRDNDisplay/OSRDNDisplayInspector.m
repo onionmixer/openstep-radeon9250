@@ -15,6 +15,7 @@
  */
 #import "OSRDNDisplayInspector.h"
 #import "osrdn_graypanel.h"
+#import "osrdn_hsyncpanel.h"
 
 @implementation OSRDNDisplayInspector
 
@@ -23,6 +24,17 @@
     [super setTable:instance];
     [grayMatrix selectCellWithTag:
         osrdnGrayTagFor([table valueForStringKey:OSRDN_PANEL_GRAY_KEY])];
+    [self showHsync:osrdnHsyncFor([table valueForStringKey:OSRDN_PANEL_HSYNC_KEY])];
+    return self;
+}
+
+/* the slider and its number show v; the slider's range is the nib's */
+- showHsync:(int)v
+{
+    char buf[4];
+
+    [hsyncSlider setIntValue:v];
+    [hsyncValue setStringValue:osrdnHsyncText(v, buf)];
     return self;
 }
 
@@ -30,6 +42,17 @@
 {
     [table insertKey:OSRDN_PANEL_GRAY_KEY
                value:NXCopyStringBuffer(osrdnGrayValueForTag([[sender selectedCell] tag]))];
+    return self;
+}
+
+/* a whole number of pixels, stored as the driver reads it */
+- hsyncChanged:sender
+{
+    char buf[4];
+    int  v = osrdnHsyncClamp([sender intValue]);
+
+    [self showHsync:v];
+    [table insertKey:OSRDN_PANEL_HSYNC_KEY value:NXCopyStringBuffer(osrdnHsyncText(v, buf))];
     return self;
 }
 

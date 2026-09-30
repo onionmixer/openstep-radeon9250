@@ -169,6 +169,34 @@ osrdn_modesel_gray(const char *text, int *refused)
     return 0;
 }
 
+long
+osrdn_modesel_hsync(const char *text, int *refused)
+{
+    long value = 0, sign = 1;
+    int  digits = 0;
+
+    *refused = 0;
+    if (text == 0)
+        return OSRDN_HSYNC_DEFAULT;
+    if (*text == '+' || *text == '-') {
+        if (*text == '-')
+            sign = -1;
+        text++;
+    }
+    while (*text >= '0' && *text <= '9' && digits < 4) {
+        value = value * 10L + (long)(*text - '0');
+        digits++;
+        text++;
+    }
+    value *= sign;
+    if (*text != '\0' || digits == 0 || digits > 3 ||
+        value < OSRDN_HSYNC_MIN || value > OSRDN_HSYNC_MAX) {
+        *refused = 1;
+        return OSRDN_HSYNC_DEFAULT;
+    }
+    return value;
+}
+
 void
 osrdn_modesel_choose(const char *displayMode, unsigned long mapped, osrdn_modesel *sel)
 {

@@ -159,9 +159,9 @@ MODE_MUTATIONS = [
     ('a wrong VGA byte is counted but not named',
      '    n = mode->revertVgaBad;\n    if (n < OSRDN_VGA_NAMED) {',
      '    n = mode->revertVgaBad;\n    if (0) {'),
-    ('the cycle repaints the test pattern over the desktop',
-     '    if (fb != 0 && !mode->skipShow)\n        osrdn_mode_pattern(mode, fb);',
-     '    if (fb != 0)\n        osrdn_mode_pattern(mode, fb);'),
+    ('the cycle blackens the desktop',
+     '    if (fb != 0 && !mode->skipShow)\n        osrdn_mode_black(mode, fb);',
+     '    if (fb != 0)\n        osrdn_mode_black(mode, fb);'),
     ('the GART translation gate is dropped',
      '    if (!modeGate(mode, GATE_GART, osrdn_peek(base, PEEK_AIC_CNTL), PCIGART_TRANSLATE_EN, 0))\n        return 0;\n',
      ''),
@@ -217,18 +217,36 @@ MODE_MUTATIONS = [
     ('R3b-2: the divider row comes from the default resolution',
      '    r = osrdn_res(mode->res);\n    if (!mode->selected',
      '    r = osrdn_res(OSRDN_RES_DEFAULT);\n    if (!mode->selected'),
-    ('R3b-2: the pattern writes one pixel per word',
+    ('R3b-2: the blackening writes one pixel per word',
      '    per = 4U / bytes;',
      '    per = 1U;'),
-    ('R3b-2: the pattern ramp is the 800-pixel one',
-     '    ramp = (x * 255UL) / (width - 1UL);',
-     '    ramp = ((x * 328UL) >> 10) & 0xffUL;'),
-    ('R3b-2: the pattern packs 555 as 565',
-     '        return ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);',
-     '        return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);'),
-    ('R3b-2: the second pixel of a word overwrites the first',
-     '                word |= modePixel(bytes, x + i, y, width, height) << (i * bytes * 8U);',
-     '                word |= modePixel(bytes, x + i, y, width, height);'),
+    ('REL3: the boot paints colour again',
+     '            rdnMmioWrite32(fb, (unsigned int)(y * rowBytes + x * bytes), 0);',
+     '            rdnMmioWrite32(fb, (unsigned int)(y * rowBytes + x * bytes), 0x00ff00ffUL);'),
+    ('REL3: the entry writes the table sync word, not the adjusted one',
+     '    osrdn_mmio_put(base, SNAP_CRTC_H_SYNC,\n                   osrdn_mode_hsync_word(r->hTotalDisp, r->hSync, mode->hsyncAdj,\n                                         &mode->hsyncRefused));',
+     '    osrdn_mmio_put(base, SNAP_CRTC_H_SYNC, r->hSync);'),
+    ('REL3: the read-back expects the table sync word',
+     '    if (mode->verifyGot[SNAP_CRTC_H_SYNC] !=\n        osrdn_mode_hsync_word(r->hTotalDisp, r->hSync, mode->hsyncAdj, &refused))',
+     '    refused = 0;\n    if (mode->verifyGot[SNAP_CRTC_H_SYNC] != r->hSync)'),
+    ('REL3: the lower bound lets the sync into the picture',
+     '    if (start + adj < hdisp - 8L || start + adj + width > htotal - 8L) {',
+     '    if (start + adj < 0L || start + adj + width > htotal - 8L) {'),
+    ('REL3: the upper bound lets the sync past the line',
+     '    if (start + adj < hdisp - 8L || start + adj + width > htotal - 8L) {',
+     '    if (start + adj < hdisp - 8L || start + adj > htotal - 8L) {'),
+    ('REL3: the sync width is dropped when the start moves',
+     '    return (hSync & ~0x1fffUL) | ((unsigned long)(start + adj) & 0x1fffUL);',
+     '    return (hSync & ~0x3f1fffUL) | ((unsigned long)(start + adj) & 0x1fffUL);'),
+    ('REL3: the live move skips the claim',
+     '    if (!modeClaim(mode))\n        return MODE_HSYNC_BUSY;\n    mode->kernelRevertSeen = 0;\n    mode->noSleep = 1;',
+     '    (void)modeClaim(mode);\n    mode->kernelRevertSeen = 0;\n    mode->noSleep = 1;'),
+    ('REL3: the live move writes with no mode of ours on the card',
+     '    if (!mode->snapshotValid || !mode->modeWritten || r == 0) {\n        rc = MODE_HSYNC_NOT_LIVE;',
+     '    if (r == 0) {\n        rc = MODE_HSYNC_NOT_LIVE;'),
+    ('REL3: the live move is not kept for the next entry',
+     '            mode->hsyncAdj = adj;\n            mode->hsyncRefused = 0;',
+     '            mode->hsyncRefused = 0;'),
     ('R3b-2: the divider row is looked up after the blank',
      '    mode->step = 3;\n    if (!modeRow(mode, base))\n        return 0;\n\n'
      '    /* from here every failure reverts: -enterLinearMode cannot report one */\n'
@@ -341,38 +359,25 @@ def mapped_length():
     return m.group(1)
 
 
-def pattern_pixel(nbytes, x, y, w, h):
-    """The test pattern as docs/R3_MULTIMODE_PLAN.md 23-4 describes it, written
-    here separately from osrdn_mode.m's modePixel."""
-    ramp = x * 255 // (w - 1)
-    band = y // (h // 4)
-    corner = (x < 16 or x >= w - 16) and (y < 16 or y >= h - 16)
-    if nbytes == 1:
-        if corner:
-            return 255
-        return 255 - ramp if band == 1 else ramp
-    if corner:
-        r, g, b = 255, 0, 255
-    else:
-        r, g, b = [(ramp, 0, 0), (0, ramp, 0), (0, 0, ramp)][band] if band < 3 else (ramp, ramp, ramp)
-    if nbytes == 2:
-        return ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3)
-    return (r << 16) | (g << 8) | b
+# ---- REL3 (docs/REL3_DISPLAY_FIX_PLAN.md 3-2): the sync word for an adjustment,
+#      from the mode's own timings (hdisp, htotal, hsstart, hsend), written here
+#      separately from osrdn_mode.m's osrdn_mode_hsync_word
+# the panel's range and one past each end (640x480 sets them), the default,
+# and 800x600's own two ends past the panel's (its bounds are -40..88)
+HSYNC_ADJ_CASES = [-41, -17, -16, 0, 7, 48, 49, 89]
+HSYNC_DEFAULT = 7
 
 
-def pattern_sum(w, h, nbytes):
-    """Sum of the 32-bit words, mod 2**32: pixel i of a word sits i * nbytes
-    bytes up.  Rows repeat, so each kind of row is summed once."""
-    per = 4 // nbytes
-    kinds = {}
-    for y in range(h):
-        key = (y // (h // 4), y < 16 or y >= h - 16)
-        kinds.setdefault(key, [y, 0])[1] += 1
-    total = 0
-    for (band, _), (y, count) in kinds.items():
-        row = sum(pattern_pixel(nbytes, x, y, w, h) << (8 * nbytes * (x % per)) for x in range(w))
-        total += row * count
-    return total & 0xffffffff
+def hsync_expect(rm, m, adj):
+    """(word, refused): the start moves by adj while the whole sync stays in
+    the blanking, else the table word unchanged and refused."""
+    table = rm.rfb_crtc_words(m)[1]
+    start = m['hsstart'] - 8
+    width = (m['hsend'] - m['hsstart']) // 8 * 8
+    assert table & 0x1fff == start and (table >> 16) & 0x3f == width // 8
+    if start + adj < m['hdisp'] - 8 or start + adj + width > m['htotal'] - 8:
+        return table, 1
+    return (table & ~0x1fff) | ((start + adj) & 0x1fff), 0
 
 
 # ---- R3b-2b: transfer tables and the LUTs they must give (docs/R3_MULTIMODE_PLAN.md 24-3),
@@ -469,12 +474,20 @@ def sim_expect(path):
             cells.append('{ 0x%08xUL, 0x%08xUL, 0x%08xUL }' % (x['set_bits'], x['clear_bits'], x['preserve_mask']))
         out.append('    { %s },' % ', '.join(cells))
     out.append('};')
-    out.append('/* [resolution][format]: the sum of every word the pattern writes, mod 2**32 */')
-    out.append('static const unsigned long simxPatSum[SIMX_RES][SIMX_FMT] = {')
+    out.append('/* REL3: [resolution][case] the CRTC_H_SYNC_STRT_WID word and whether the row refuses */')
+    out.append('#define SIMX_HADJ %d' % len(HSYNC_ADJ_CASES))
+    out.append('#define SIMX_HADJ_DEFAULT %dL' % HSYNC_DEFAULT)
+    out.append('static const long simxHadj[SIMX_HADJ] = { %s };' % ', '.join('%dL' % a for a in HSYNC_ADJ_CASES))
+    out.append('static const unsigned long simxHword[SIMX_RES][SIMX_HADJ] = {')
     for m in rm.MODES:
-        out.append('    { %s },' % ', '.join('0x%08xUL' % pattern_sum(m['hdisp'], m['vdisp'], f['bytes'])
-                                               for f in rm.FORMATS))
+        out.append('    { %s },' % ', '.join('0x%08xUL' % hsync_expect(rm, m, a)[0] for a in HSYNC_ADJ_CASES))
     out.append('};')
+    out.append('static const int simxHref[SIMX_RES][SIMX_HADJ] = {')
+    for m in rm.MODES:
+        out.append('    { %s },' % ', '.join('%d' % hsync_expect(rm, m, a)[1] for a in HSYNC_ADJ_CASES))
+    out.append('};')
+    out.append('static const unsigned long simxHwordDefault[SIMX_RES] = { %s };'
+               % ', '.join('0x%08xUL' % hsync_expect(rm, m, HSYNC_DEFAULT)[0] for m in rm.MODES))
     out += lut_expect()
     out.append('/* [resolution][refdiv]: the PPLL_DIV_3 word, 0 where the table has no row */')
     out.append('static const unsigned long simxDiv3[SIMX_RES][SIMX_REFDIVS] = {')
@@ -505,9 +518,9 @@ def run(exe):
     try:
         r = subprocess.run([exe], capture_output=True, text=True, timeout=60)
     except subprocess.TimeoutExpired as e:
-        out = (e.stdout or '') + (e.stderr or '')
-        if isinstance(out, bytes):
-            out = out.decode('utf-8', 'replace')
+        # a timeout hands back bytes even with text=True: decode each part
+        out = ''.join(x.decode('utf-8', 'replace') if isinstance(x, bytes) else (x or '')
+                      for x in (e.stdout, e.stderr))
         return 124, out + '\nsimworld2b: FAIL (it never came back: a wait with no bound)\n'
     return r.returncode, r.stdout + r.stderr
 

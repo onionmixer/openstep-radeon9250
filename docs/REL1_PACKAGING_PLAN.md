@@ -99,8 +99,8 @@ radeon 은 SDL2 의 기존 present 계약만 쓴다.  radeon README·INSTALL 과
 
 | # | 무엇 | 근거 | 제안 |
 |---|---|---|---|
-| **B1** | 드라이버 표가 개발용이다: `Title "OSRDNDisplay R2b-0 record build"`, `Version "0.1"`, 스위치 다섯(`RDN R2B0 Record`·`RDN Engine Test`·`RDN VRAM Mmap`·`RDN CP Test`·`RDN 3D Test`)이 전부 `Yes` | `OSRDNDisplay/Default.table`·`Instance0.table`(둘이 같다) | 이름과 달리 **전부 기능 스위치**다(`OSRDNDisplay.m` 65–80: "off unless Yes").  특히 **`RDN R2B0 Record` 는 주 스위치** — 꺼지면 드라이버가 디스플레이를 소유한 채 모드를 설정하지 않고(`OSRDNDisplay.m:515-522` "owns the display but drives nothing"), 3D 창도 `"record"` 로 거절된다(1312).  릴리스 표: 제목·버전을 고치고, 스위치 기본값과 키 이름(첫 릴리스라 지금 바꾸면 호환 부담이 없다)은 **결정 필요 D7** |
-| B2 | 3D 창 상한이 **128 MiB 가정**(상한 124 MiB)에서 나온다 — **VRAM 이 그보다 작은 보드에서는 3D 가 없다** | `osrdn_window.h:26-27`, `OSRDNDisplay.m:492`; 등록 전에 `CONFIG_MEMSIZE`·`CONFIG_APER_SIZE` 와 비교해 모자라면 `"reach"` 로 **거절**(`OSRDNDisplay.m:1372-1374`, `osrdn_engine.m:159-160`) | 안전 문제는 아니다(codex 가 잡은 내 오류, §10).  64 MiB 보드도 가속하려면 상한을 `CONFIG_MEMSIZE` 에서 만드는 드라이버 변경이 필요 — **결정 필요 D11**(고칠지, 한계로 적을지) |
+| **B1** | 드라이버 표가 개발용이다: `Title "OSRDNDisplay R2b-0 record build"`, `Version "0.1"`, 스위치 다섯(`RDN R2B0 Record`·`RDN Engine Test`·`RDN VRAM Mmap`·`RDN CP Test`·`RDN 3D Test`)이 전부 `Yes` | `OSRDNDisplay/Default.table`·`Instance0.table`(둘이 같다) | 이름과 달리 **전부 기능 스위치**다(`OSRDNDisplay.m` 65–80: "off unless Yes").  특히 **`RDN R2B0 Record` 는 주 스위치** — 꺼지면 드라이버가 디스플레이를 소유한 채 모드를 설정하지 않고(`OSRDNDisplay.m:525-532` "owns the display but drives nothing"), 3D 창도 `"record"` 로 거절된다(1312).  릴리스 표: 제목·버전을 고치고, 스위치 기본값과 키 이름(첫 릴리스라 지금 바꾸면 호환 부담이 없다)은 **결정 필요 D7** |
+| B2 | 3D 창 상한이 **128 MiB 가정**(상한 124 MiB)에서 나온다 — **VRAM 이 그보다 작은 보드에서는 3D 가 없다** | `osrdn_window.h:26-27`, `OSRDNDisplay.m:500`; 등록 전에 `CONFIG_MEMSIZE`·`CONFIG_APER_SIZE` 와 비교해 모자라면 `"reach"` 로 **거절**(`OSRDNDisplay.m:1407-1409`, `osrdn_engine.m:159-160`) | 안전 문제는 아니다(codex 가 잡은 내 오류, §10).  64 MiB 보드도 가속하려면 상한을 `CONFIG_MEMSIZE` 에서 만드는 드라이버 변경이 필요 — **결정 필요 D11**(고칠지, 한계로 적을지) |
 | B3 | 지원 ID 가 `0x59601002` 하나 | `Default.table` `Auto Detect IDs` | 넓히지 않는다 — README·`.info` 에 "1002:5960 rev 1 에서만 확인" |
 | B4 | 프로젝트 밖을 가리키는 인용 45 개 — 떼어낸 저장소에서 `check_citations` 가 판정 없이 죽는다 | PRERELEASE #4 | 형제 대상은 "건너뜀(이름과 수)" 을 말하고 프로젝트 안 대상이 없을 때만 FAIL — 검사기 규칙 정밀화 |
 | B5 | CP 멈춤(~93,000 제출에 3 회, 복구됨, 한 번에 ~110 ms 끊김) | G5-6 §3 | 알려진 한계로 싣는다 vs 먼저 조사 — **결정 필요 D8** |
@@ -157,8 +157,8 @@ Demos 변종은 "plain Demos 와 둘 중 하나만 설치" 다.  radeon 변종�
 | codex 주장 | 내 검증 | 판정 |
 |---|---|---|
 | 1: 변경은 전부 hook 블록(545–667) 안이지만, 포함 헤더를 읽지 않고서는 "stock 오브젝트 동일" 을 판정할 수 없다 | 내가 전수: `osmesa.c` 는 변경 뒤쪽에서 `ASSERT` 를 쓴다(968·969·1017·1994) — `macros.h:40-43` 이 `DEBUG` 일 때만 `assert` 로 펼치고, `types.h` 의 `RENDER_START`/`FINISH` 의 `assert` 도 `#ifdef DEBUG` 안; `src/*.h`·`include/GL/*.h` 에 `__LINE__` 0; stock 플래그는 `-traditional-cpp -DOPENSTEP -O4`(`Make-config:841`, `DEBUG`·`-g` 없음) | ⚖️ codex 는 판정 보류, **내 검증으로 성립** — 그래도 빌드 때 `cmp`(§3.C) |
-| 2: **거짓** — 창 등록 전에 `CONFIG_MEMSIZE`·`APER_SIZE` 를 상한과 비교해 거절한다 | `OSRDNDisplay.m:1370-1374`, `osrdn_engine.m:157-161` 을 열었다 — 맞다 | ✅ **채택 — 내 주장이 틀렸다**.  B2 를 안전 결함에서 기능 한계로 고쳤다 |
-| (재검증 중 내가 찾은 것) `RDN R2B0 Record` 가 주 스위치 | `OSRDNDisplay.m:515-522`·`1312` | 내가 처음 적은 "Record 끔" 제안이 틀렸다 — D7 수정 |
+| 2: **거짓** — 창 등록 전에 `CONFIG_MEMSIZE`·`APER_SIZE` 를 상한과 비교해 거절한다 | `OSRDNDisplay.m:1405-1409`, `osrdn_engine.m:157-161` 을 열었다 — 맞다 | ✅ **채택 — 내 주장이 틀렸다**.  B2 를 안전 결함에서 기능 한계로 고쳤다 |
+| (재검증 중 내가 찾은 것) `RDN R2B0 Record` 가 주 스위치 | `OSRDNDisplay.m:525-532`·`1312` | 내가 처음 적은 "Record 끔" 제안이 틀렸다 — D7 수정 |
 
 ## 11. 구현 계획 (2026-09-29, 사용자: "패키지 빌드 진행 — 모든 빌드·검증이 끝난 뒤 프로젝트별 커밋")
 
@@ -289,7 +289,7 @@ Matrox `pkg/` 를 **복사해 이름과 목록만** 바꾼다(검증된 절차�
 |---|---|---|
 | B7-1: 같은 처리 함수를 탄다(TRUE) — 그러나 "첫 op 가 BUSY 가 아니면 표지" 는 `RECORD` 가 순간의 FIFO/ACTIVE 로 거절돼도 부팅의 기회를 소모한다 | `cpRecord`(`osrdn_cp.m` 856 이하)의 두 거절을 열었다 | ✅ 채택 — **표지 없이 `state == CP_ST_NONE` 만으로**: LOAD 전 실패는 NONE 이라 다음 open 에 재시도, LOAD 뒤 실패는 NONE 이 아니라 재시도 없음; 로그 폭주를 막는 시도 상한 8 |
 | B7-2: claim 은 op 마다라 사슬 전체는 원자적이 아니다(op 사이 끼어들기 가능), NONE 검사도 claim 밖 | `osrdn_mode.m` 1450·1474 를 열었다 | ⚖️ 사실 — 각 op 가 claim 안에서 자기 상태를 다시 검사해 거절할 뿐이고 root 도구 경로와 같은 성질; 결함 아님, 기록 |
-| B7-3: `RECORD`·`REC3D` 는 모드 게이트를 건너뛰고(`osrdn_mode.m:1456`) `RECORD` 는 클럭 인덱스 바이트를 쓴다(`osrdn_cp.m:907`) — `key3d` 꺼짐·모드 미작성에서도 하드웨어에 닿는다 | 두 줄을 열었다 | ✅ 채택 — 자동 기동은 **`keyOn && key3d && modeWritten && snapshotValid`** 일 때만 |
+| B7-3: `RECORD`·`REC3D` 는 모드 게이트를 건너뛰고(`osrdn_mode.m:1487`) `RECORD` 는 클럭 인덱스 바이트를 쓴다(`osrdn_cp.m:907`) — `key3d` 꺼짐·모드 미작성에서도 하드웨어에 닿는다 | 두 줄을 열었다 | ✅ 채택 — 자동 기동은 **`keyOn && key3d && modeWritten && snapshotValid`** 일 때만 |
 | B8-1·3·4: 환경 변수가 있을 때 불변, 새 libc 심볼 없음, 1 을 전제한 곳 없음(TRUE); 헤더 주석은 낡는다 | `OSRDNMesaTri.c` 873–887, `judge_m1b.py` ALLOW 를 열었다 | ✅ — 헤더 주석도 고친다 |
 | B8-2: 시작값이 `ULONG_MAX` 면 증가·랩으로 1 이 된다 | `OSRDNMesaTri.c` 884–886 | ✅ 채택 — 시작값을 `0x10000..0x3fffffff` 로 가둔다(한 프로세스가 10 억 번 제출하지 않는 한 랩 없음) |
 

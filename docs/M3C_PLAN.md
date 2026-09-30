@@ -16,7 +16,7 @@ M2g 는 제출 로그를 기본 끔으로 바꾸면서 **스테이징 실패만*
 | `osrdn_cp_lines` — 머리 줄·상태·**`RDN-R5 wait`**·포인터 | 조용하면 없음 |
 | `RDN-R7B submit` | 늘 기록 |
 
-`RDN-R5 wait` 가 대기마다 `횟수/한계/시간/반복` 을 적는 줄이다(`osrdn_modelog.m:481`) — 걸쇠의
+`RDN-R5 wait` 가 대기마다 `횟수/한계/시간/반복` 을 적는 줄이다(`osrdn_modelog.m:483`) — 걸쇠의
 원인이 그 줄에 있다.
 
 ## 2. 무엇을 기록하나 — 크기를 재고 정했다 (python)
@@ -45,7 +45,7 @@ M2g 는 제출 로그를 기본 끔으로 바꾸면서 **스테이징 실패만*
 | `OSRDNDisplay.m` `r7bSubmit` | 위 표대로 |
 | `tools/r5/check_r5_src.py` | 규칙: 조용해도 **사건 실패는 전체**, `REFUSED` 는 머리 줄, skip 은 늘; 변이 |
 
-진단 경로(`setIntValues`, `OSRDNDisplay.m:682`)는 원래 늘 말한다 — 안 건드린다.
+진단 경로(`setIntValues`, `OSRDNDisplay.m:717`)는 원래 늘 말한다 — 안 건드린다.
 `RDN-R5 begin`(멈춤을 오프라인으로 짚는 줄)은 조용하면 여전히 없다 — 걸쇠는 멈춤이 아니고,
 멈춤은 이번 일이 아니다.
 
@@ -116,7 +116,7 @@ M2g 는 제출 로그를 기본 끔으로 바꾸면서 **스테이징 실패만*
     RDN-R7B submit … words=108 rc=3 why=0 at=108 … subs=148
     RDN-R5 zclear … rc=1 why=3 …                           (M3c 의 거절 머리 줄 — 의도대로)
 
-`RDN-R5 wait` 서식(`osrdn_modelog.m:481`)의 `rptr=횟수/한계/us/t반복` 끝부분이다:
+`RDN-R5 wait` 서식(`osrdn_modelog.m:483`)의 `rptr=횟수/한계/us/t반복` 끝부분이다:
 **CP 읽기 포인터 대기가 한계에 닿았다 — 100,008 us, 7,349 바퀴**(한계 `C_RPTR_US = 100000`,
 `osrdn_cp.m:144`).  CP 가 링을 소비하다 멈췄다 — 카드가 그 제출의 그리기에서 섰다.
 

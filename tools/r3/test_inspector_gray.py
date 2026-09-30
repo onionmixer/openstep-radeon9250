@@ -20,7 +20,9 @@ compiles -- as 32-bit C on the host and asks it, then holds the answers to
 (b) and (c) cannot see.
 
 H2 reads OSRDNDisplayInspector.m: every valueForStringKey:/insertKey: names
-OSRDN_PANEL_GRAY_KEY; that key is the driver's own string; the inspector never
+OSRDN_PANEL_GRAY_KEY or (REL3, docs/REL3_DISPLAY_FIX_PLAN.md 3-4)
+OSRDN_PANEL_HSYNC_KEY, each read and stored; each key is the driver's own
+string (tools/rel3/test_inspector_hsync.py holds the hsync values); the inspector never
 names "Display Mode" (the driver's grey rule takes only the Gray Levels
 string) and never calls freeString: (Configure's NXStringTable owns its values).
 """
@@ -152,17 +154,34 @@ def driver_key():
     return m.group(1) if m else None
 
 
+PANEL_KEYS = ('OSRDN_PANEL_GRAY_KEY', 'OSRDN_PANEL_HSYNC_KEY')
+
+
+def driver_hsync_key():
+    m = re.search(r'^#define\s+OSRDN_HSYNC_KEY\s+"([^"]*)"', open(DRIVER_M).read(), re.M)
+    return m.group(1) if m else None
+
+
+def panel_hsync_key():
+    m = re.search(r'^#define\s+OSRDN_PANEL_HSYNC_KEY\s+"([^"]*)"',
+                  open(os.path.join(BUNDLE, 'osrdn_hsyncpanel.h')).read(), re.M)
+    return m.group(1) if m else None
+
+
 def h2(text):
     bad = []
     body = re.sub(r'/\*.*?\*/', '', text, flags=re.S)
     for sel in ('valueForStringKey:', 'insertKey:'):
         for m in re.finditer(re.escape(sel) + r'\s*([^\]\s]+)', body):
-            if m.group(1) != 'OSRDN_PANEL_GRAY_KEY':
+            if m.group(1) not in PANEL_KEYS:
                 bad.append('%s names %s' % (sel, m.group(1)))
-    if not re.search(r'valueForStringKey:\s*OSRDN_PANEL_GRAY_KEY', body):
-        bad.append('the panel never reads OSRDN_PANEL_GRAY_KEY')
-    if not re.search(r'insertKey:\s*OSRDN_PANEL_GRAY_KEY', body):
-        bad.append('the panel never stores OSRDN_PANEL_GRAY_KEY')
+    for key in PANEL_KEYS:
+        if not re.search(r'valueForStringKey:\s*' + key, body):
+            bad.append('the panel never reads ' + key)
+        if not re.search(r'insertKey:\s*' + key, body):
+            bad.append('the panel never stores ' + key)
+    if driver_hsync_key() is None or driver_hsync_key() != panel_hsync_key():
+        bad.append('the hsync key is %r in the driver, %r in the panel' % (driver_hsync_key(), panel_hsync_key()))
     if '"Display Mode"' in body:
         bad.append('the inspector names "Display Mode"')
     if 'freeString:' in body:
@@ -182,7 +201,8 @@ def main():
             print('  FAIL %s' % x)
         print('  %-4s H1 the panel table against the driver rule (%d stored values, %d tags)'
               % ('FAIL' if base1 else 'ok', len(INPUTS), len(TAGS)))
-        print('  %-4s H2 the inspector touches Gray Levels only' % ('FAIL' if base2 else 'ok'))
+        print('  %-4s H2 the inspector touches Gray Levels and RDN HSync Adjust only'
+              % ('FAIL' if base2 else 'ok'))
         fails += len(base1) + len(base2)
 
         header = open(HEADER).read()
@@ -213,6 +233,10 @@ def main():
                                                   '[super setTable:instance];\n    [table valueForStringKey:"Display Mode"];')),
             ('stores another key', insp.replace('[table insertKey:OSRDN_PANEL_GRAY_KEY',
                                                 '[table insertKey:"Display Mode"')),
+            ('REL3: the slider stores under the Gray Levels key',
+             insp.replace('[table insertKey:OSRDN_PANEL_HSYNC_KEY', '[table insertKey:OSRDN_PANEL_GRAY_KEY')),
+            ('REL3: the panel does not read the hsync key back',
+             insp.replace('[table valueForStringKey:OSRDN_PANEL_HSYNC_KEY]', '0')),
             ('frees a table value', insp.replace('return self;\n}\n\n- grayChanged',
                                                  '[table freeString:0];\n    return self;\n}\n\n- grayChanged')),
         ]

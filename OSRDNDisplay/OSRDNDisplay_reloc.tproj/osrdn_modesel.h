@@ -40,6 +40,17 @@ void osrdn_modesel_choose(const char *displayMode, unsigned long mapped, osrdn_m
    is 256 with *refused = 1.  An absent key (0) is 256, not refused. */
 int osrdn_modesel_gray(const char *text, int *refused);
 
+/* "RDN HSync Adjust" (docs/REL3_DISPLAY_FIX_PLAN.md 3-2 4): an optional '+' or
+   '-' then one to three decimal digits and nothing else, in
+   OSRDN_HSYNC_MIN..OSRDN_HSYNC_MAX pixels.  Anything else is the default with
+   *refused = 1; an absent key (0) is the default, not refused.  The per-row
+   bound is osrdn_mode_hsync_word's, applied when the word is written. */
+#define OSRDN_HSYNC_MIN         (-16L)  /* 640x480's front porch, the smallest (python, plan 3-2) */
+#define OSRDN_HSYNC_MAX         48L     /* 640x480's back porch */
+#define OSRDN_HSYNC_DEFAULT     7L      /* set on the machine, 800x600 RGB:888/32 (plan 7):
+                                           0 left a black band left, 13 one right */
+long osrdn_modesel_hsync(const char *text, int *refused);
+
 /* the rows; 0 for an index outside the table */
 const osrdn_res_row *osrdn_res(int index);
 const osrdn_fmt_row *osrdn_fmt(int index);

@@ -8,12 +8,14 @@ OPENSTEP 4.2(i386)의 **PCI ATI Radeon 9250 (RV280)** 을 위한 새 DriverKit
 [openstep-matrox-remade](https://github.com/onionmixer/openstep-matrox-remade)
 (G450)의 후속이다.
 
-**v1.1 릴리스**: [releases/tag/v1.1](https://github.com/onionmixer/openstep-radeon9250/releases/tag/v1.1)
+**v1.2 릴리스**: [releases/tag/v1.2](https://github.com/onionmixer/openstep-radeon9250/releases/tag/v1.2)
 — 설치용 `.pkg` 세 개와 SHA256SUMS. 설치와 복구 절차는
 [release-packaging/INSTALL.md](release-packaging/INSTALL.md)에 있고,
-내용은 [RELEASE_NOTES_v1.1.md](RELEASE_NOTES_v1.1.md)에 있다.
-**1.0 을 쓰고 있다면 1.1 로 올릴 것** — 1.0 은 부팅 뒤 카드에서 clear 를 한 번도 하지
-않은 GL 프로그램(GLQuake 가 그렇다)이 먼저 뜨면 화면이 로딩 콘솔에서 바뀌지 않았다.
+내용은 [RELEASE_NOTES_v1.2.md](RELEASE_NOTES_v1.2.md)에 있다.
+1.2 는 부팅 때의 색 시험 패턴이 로그인 화면에 비치던 것과, 화면이 오른쪽으로 밀리던 것을
+고쳤다(가로 위치는 Configure.app 의 `H position` 으로 조정). 1.1 은 부팅 뒤 clear 를
+하지 않는 GL 프로그램(GLQuake)의 화면 멈춤을 고친 판이다
+([RELEASE_NOTES_v1.1.md](RELEASE_NOTES_v1.1.md)) — 1.0 을 쓰고 있다면 1.2 로 올릴 것.
 
 ## 무엇이 되나
 
@@ -21,6 +23,7 @@ OPENSTEP 4.2(i386)의 **PCI ATI Radeon 9250 (RV280)** 을 위한 새 DriverKit
 |---|---|
 | **화면** | 5 해상도 × 4 형식 = 20 조합, Configure.app 에서 고른다 |
 | **회색 단계** | Configure.app 인스펙터의 `Gray Levels` 라디오(256/16/4/2) |
+| **가로 위치** | Configure.app 인스펙터의 `H position` 슬라이더(−16~48 픽셀, 기본 7) — 다음 부팅부터 |
 | **3D** | OSMesa 백엔드 `libGL_radeon.a` — 삼각형을 CP 링으로 카드에 보낸다 |
 | **SDL2** | [SDL2 openstep](https://github.com/onionmixer/openstep-sdl2) 의 present 계약으로 프레임을 화면에 VRAM→VRAM 블릿 |
 | **GLQuake** | [sdl2quake-openstep](https://github.com/onionmixer/sdl2quake-openstep) 이 **월드 삼각형 전부를 카드로** 그린다 |

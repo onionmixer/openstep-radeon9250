@@ -1,6 +1,6 @@
 "Title" = "OpenStep Radeon 9250 Display";
 "Family" = "Display";
-"Version" = "1.1";
+"Version" = "1.2";
 "Instance" = "0";
 "Location" = "";
 "Driver Name" = "OSRDNDisplay";

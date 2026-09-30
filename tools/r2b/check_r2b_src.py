@@ -11,8 +11,9 @@ The rules, and why each one exists:
   writes-through-accessors  every mode register write goes through
         osrdn_mmio_put / osrdn_pll_put / osrdn_palette_put / osrdn_vga_put,
         whose argument is an index into osrdn_snap's tables.  The only direct
-        rdnMmio* call left is the framebuffer pattern, which writes no
-        register.  Without this, "which registers does the entry write" stops
+        rdnMmio* call left is the framebuffer blackening, which writes no
+        register -- and, since REL3 (docs/REL3_DISPLAY_FIX_PLAN.md 3-1), writes
+        only zero: it was the R3 test pattern, which showed through at login.  Without this, "which registers does the entry write" stops
         being answerable by reading a table.
   entry-subset-revert       every register index the entry writes is also
         written by the revert.  This is the invariant the console's return
@@ -46,7 +47,7 @@ MODESEL = os.path.join(TPROJ, 'osrdn_modesel.m')
 CLASS = os.path.join(TPROJ, 'OSRDNDisplay.m')
 
 ENTRY_STEPS = ['modeCheck', 'modeSnapshot', 'modeRow', 'modeBlank', 'modeCrtc', 'pllProgram',
-               'modeFifo', 'modeDac', 'modePalette', 'osrdn_mode_pattern', 'modeUnblank',
+               'modeFifo', 'modeDac', 'modePalette', 'osrdn_mode_black', 'modeUnblank',
                'modeVerify']
 
 
@@ -152,12 +153,16 @@ def rules(mode_text, snap_text, sel_text=None, class_text=None):
     # ---- writes go through the accessors
     p = []
     for name, body in fn.items():
-        if name == 'osrdn_mode_pattern':
+        if name == 'osrdn_mode_black':
             continue
         for call in re.findall(r'\b(rdnMmioWrite8|rdnMmioWrite32|osrdn_outb|osrdn_outl)\s*\(', body):
             p.append('%s calls %s directly' % (name, call))
-    if len(re.findall(r'\brdnMmioWrite32\s*\(', fn.get('osrdn_mode_pattern', ''))) != 1:
-        p.append('osrdn_mode_pattern must write the framebuffer exactly one way')
+    blk = fn.get('osrdn_mode_black', '')
+    if len(re.findall(r'\brdnMmioWrite32\s*\(', blk)) != 1:
+        p.append('osrdn_mode_black must write the framebuffer exactly one way')
+    # REL3 3-1: the one write stores zero -- black in every format at the entry
+    if not re.search(r'\brdnMmioWrite32\s*\(\s*fb\s*,[^;]*,\s*0\s*\)\s*;', blk):
+        p.append('osrdn_mode_black must write 0 and nothing else')
     r['writes-through-accessors'] = p
 
     # ---- the entry's write set is inside the revert's
@@ -307,6 +312,17 @@ MUTATIONS = [
     (MODE, 'a register is written without the accessor',
      '    v = osrdn_mmio_get(base, SNAP_CRTC_EXT_CNTL);\n    osrdn_mmio_put(base, SNAP_CRTC_EXT_CNTL, v | CRTC_DIS_ALL);\n}',
      '    rdnMmioWrite32(base, 0x0054, 0);\n}', ['writes-through-accessors']),
+    (MODE, 'REL3: the boot paints colour again',
+     '            rdnMmioWrite32(fb, (unsigned int)(y * rowBytes + x * bytes), 0);',
+     '            rdnMmioWrite32(fb, (unsigned int)(y * rowBytes + x * bytes), 0x00ff00ffUL);',
+     ['writes-through-accessors']),
+    (MODE, 'REL3: the boot writes the framebuffer a second way',
+     '            rdnMmioWrite32(fb, (unsigned int)(y * rowBytes + x * bytes), 0);',
+     '            rdnMmioWrite32(fb, (unsigned int)(y * rowBytes + x * bytes), 0);\n'
+     '            rdnMmioWrite32(fb, (unsigned int)(y * rowBytes), 0);',
+     ['writes-through-accessors']),
+    (MODE, 'REL3: the blackening is skipped at boot',
+     '        osrdn_mode_black(mode, fb);', '        ;', ['enter-order']),
     (MODE, 'the revert stops restoring a register the entry writes',
      '    osrdn_mmio_put(base, SNAP_CRTC_PITCH, mode->snap.mmio[SNAP_CRTC_PITCH]);',
      '    /* mutation: the pitch is not restored */',

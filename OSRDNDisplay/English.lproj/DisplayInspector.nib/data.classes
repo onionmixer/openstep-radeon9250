@@ -45,9 +45,12 @@ IODisplayInspector = {
 OSRDNDisplayInspector = {
     ACTIONS = {
 	"grayChanged:" = "grayChanged:"; 
+	"hsyncChanged:" = "hsyncChanged:"; 
     }; 
     OUTLETS = {
 	grayMatrix = grayMatrix; 
+	hsyncSlider = hsyncSlider; 
+	hsyncValue = hsyncValue; 
     }; 
     SUPERCLASS = IODisplayInspector; 
 };

@@ -268,7 +268,7 @@ RDN-R5 zclear  boot=ed7bef6a n=8 arg=00000002 len=171 rc=1 why=26
 
 `rc=1` 은 `CP_RC_REFUSED`, **`why=26` 은 `CP_WHY_NOT_PREPPED`** — "ZCLEAR without a
 ZPREP since the last one"(`osrdn_cp.h:244`).  `-r7bSubmit:` 는 클라이언트 스트림을
-**`CP_OP_ZCLEAR` 로 실어 보내므로**(`OSRDNDisplay.m:264`), R6a 가 깊이 측정을 위해 건
+**`CP_OP_ZCLEAR` 로 실어 보내므로**(`OSRDNDisplay.m:268`), R6a 가 깊이 측정을 위해 건
 인터록이 그대로 적용된다.  R7b 의 러너도 그래서 제출마다 `zprep` 을 먼저 돌렸다
 (`run_r7b.sh:92`).
 

@@ -2,7 +2,7 @@
 
 부팅 4 실측(`docs/G3_PRESENT_PLAN.md` 9): 800×600 PRESENT 프레임 = glClear ≈ 250 ms + 그리기 143 ms + 도장 19 ms.
 - glClear: `osrdn_depth_clear` 가 **CPU 로 VRAM 창에 243k 워드**를 쓴다(`OSRDNMesaDepth.c`(G3b 전의 `osrdn_depth_clear`, CPU 루프)).  참조·Matrox 는 카드가 지운다.
-- 그리기: 제출 ioctl 4,525 us 중 CP 연산 338 us; **syslogd 를 멈추면 290 us** → 제출마다 무조건 찍는 `IOLog("RDN-R7B submit")`(`OSRDNDisplay.m:1342`) 가 syslogd 배달을 기다린다.  참조·Matrox 는 제출당 로그 0.
+- 그리기: 제출 ioctl 4,525 us 중 CP 연산 338 us; **syslogd 를 멈추면 290 us** → 제출마다 무조건 찍는 `IOLog("RDN-R7B submit")`(`OSRDNDisplay.m:1377`) 가 syslogd 배달을 기다린다.  참조·Matrox 는 제출당 로그 0.
 
 ## 1. 참고가 답하는 것 (원문 확인)
 

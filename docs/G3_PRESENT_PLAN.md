@@ -11,7 +11,7 @@
 | GMC 워드 | `SRC_PITCH_OFFSET_CNTL(1<<0) | DST_PITCH_OFFSET_CNTL(1<<1) | BRUSH_NONE(15<<4) | (6<<8 ARGB8888) | SRC_DATATYPE_COLOR(3<<12) | ROP3_S(0xcc0000) | DP_SRC_SOURCE_MEMORY(2<<24) | CLR_CMP_CNTL_DIS(1<<28) | WR_MSK_DIS(1<<30)` | 같은 함수; 비트는 `radeon_reg.h:683-737` |
 | 레지스터 | `DP_GUI_MASTER_CNTL 0x146c`, `SRC_PITCH_OFFSET 0x1428`, `DST_PITCH_OFFSET 0x142c`, `SRC_X_Y 0x1590`(x<<16|y), `DST_X_Y 0x1594`, `DST_WIDTH_HEIGHT 0x1598`(w<<16|h), `WAIT_UNTIL 0x1720` | `radeon_reg.h:683`, `:784`, `:792`, `:797`, `:1580`, `:1585`, `:1705`; **주의** R4 의 MMIO 경로가 쓴 `SRC_Y_X 0x1434`·`DST_Y_X 0x1438` 와 다른 CP 용 레지스터다(`R4_ENGINE_PLAN.md` 1-1) |
 | 피치·오프셋 인코딩 | `(pitch_bytes/64)<<22 | (카드주소>>10)`; 우리 카드주소 = VRAM 오프셋(MC_FB_LOCATION) | `R4_ENGINE_PLAN.md` 1-2, `radeon_cp.c:1315-1317` |
-| 화면과 창 | 화면(스캔아웃)은 **카드 주소 0**(`CRTC_OFFSET` 0, `osrdn_mode.m:547-548`), 1024×768 RGB:888/32, rowBytes 4096.  클라이언트 창(오프스크린 표면들)은 `[winStart, winEnd)` = `[0x400000, …)`(`OSRDNDisplay.m:488-497`, caps.winStart) — 색 표면은 창 오프셋 0 = 카드 주소 `winStart` | 부팅 3 `osrdncaps`, `osrdn_r7b.h` caps.winStart |
+| 화면과 창 | 화면(스캔아웃)은 **카드 주소 0**(`CRTC_OFFSET` 0, `osrdn_mode.m:572-573`), 1024×768 RGB:888/32, rowBytes 4096.  클라이언트 창(오프스크린 표면들)은 `[winStart, winEnd)` = `[0x400000, …)`(`OSRDNDisplay.m:496-505`, caps.winStart) — 색 표면은 창 오프셋 0 = 카드 주소 `winStart` | 부팅 3 `osrdncaps`, `osrdn_r7b.h` caps.winStart |
 | 응용과의 계약 | `SDL_OpenStepGLPresent{abi,size, surface_origin(), set_present_mode(on), present_rect(srcX,srcY,w,h,dstX,dstY,&verdict)}` 를 `SDL_SetWindowData(win, "OpenStep.GL.VRAMPresent", &hooks)` 로 등록.  **SDL2 는 바꾸지 않는다** — 계약의 목적이 "라이브러리만 바꿔 링크" 이다(사용자 지적 2026-09-26).  SDL 은 `dstX/dstY` 를 화면 **좌상단 원점**으로 주고 화면 밖을 잘라 비음수 rect 를 만들며(`SDL_openstepvideo.m:2568-2579`), 표면이 아래→위 순서라 **행마다 역순으로 `present_rect(…, h=1, …)` 를 부른다**(`SDL_openstepvideo.m:2605-2643`; Matrox 실측 행당 7.21 us, 800×600 8.01 ms/프레임).  이동·가림(focus)·expose 는 SDL 이 처리하고 거절 시 되읽기 경로로 내려간다 | `SDL_openstepglpresent.h`, `SDL_openstepvideo.m:2644-2695` |
 | 커널 게이트·판정 | magic → 모드/등록 → 걸쇠 → busy → 32bpp → 기하(0·0xffff 초과·stride 0x8000 초과) → dst 가 화면 안 → src 원점이 창 안·64 B 정렬 → src 사각형이 창 안 → 엔진 idle → 블릿 → 판정 `OK/E_MAGIC/E_SRC/E_DST/E_GEOM/E_BUSY/E_LATCH/E_MODE` | Matrox `OpenStepMGAReplacementDisplay.m:6360-6500` `runHW3DPresent`, `OpenStepMGAHW3D.h:1414-1421` |
 | 라이브러리 쪽 | `PresentMode(on)` 은 미러를 세우고(되읽기 0 회), `PresentRect` 는 ioctl 하나(VRAM→VRAM, 버스 안 넘음) | Matrox `OpenStepMGAMesaBuffer.c:746-818` |
@@ -24,7 +24,7 @@
 
 ### 2-1. 드라이버 — 새 ioctl `OSRDN_R7B_IOC_PRESENT`(그룹 'R', 번호 4)
 블록(10 워드 = 40 B): `magic, version, srcOrg, srcStride(px), srcX, srcY, w, h, dstX, dstY` in / `status, verdict` out → 12 워드 48 B.  `_fits` typedef 추가.
-핸들러 `r7bPresent:` 는 `r7bSubmit2:` 와 같은 자리(`OSRDNDisplay.m:263`)에서 분기, **Matrox 게이트를 같은 순서로**:
+핸들러 `r7bPresent:` 는 `r7bSubmit2:` 와 같은 자리(`OSRDNDisplay.m:267`)에서 분기, **Matrox 게이트를 같은 순서로**:
 1. magic/version → `E_MAGIC`.
 2. 모드 선택·32bpp·CP `RUNNING`·`failed/latched` 아님 → `E_MODE`/`E_LATCH` (cp 상태는 `osrdn_mode_cp` 의 새 op `CP_OP_PRESENT` 안에서 본다 — ZCLEAR 와 같은 통로, 클레임 아래).
 3. 기하: `w,h ∈ [1,0xffff]`, `srcStride ∈ [1,0x8000]`, **`srcStride*4 % 64 == 0`**(피치 필드가 64 B 단위; 폭 16 화소 배수) → `E_GEOM`.
@@ -42,7 +42,7 @@
 - `unsigned long OSRDNMesaBufferOrigin(void)`: 현재 컨텍스트가 주인이면 **1**(카드 주소는 0 이라 "0 = 없음" 계약과 충돌; SDL 은 예/아니오로만 쓴다 — 헤더 주석에 명시), 아니면 0.
 - `void OSRDNMesaBufferPresentMode(int on)`: `surfPresent` 플래그.  **미러 억제는 `glFinish` 경로(`osrdnHookFinish`)에서만** — 명시적 읽기(`osrdnHookRenderFinish`, `OSMesaGetColorBuffer`)와 해제(leave/release) 는 그대로 복사한다(M3g 계약 유지, codex 지적).  Finish 의 억제는 `finishStoodDown++` 로 센다.  on 이면 장치 fd 를 **붙잡는다**(아래).
 - `int OSRDNMesaBufferPresentRect(...)`: 주인이 아니면 −1(verdict E_MODE); 블록을 채워(`srcOrg = 0`, `srcStride = surfRowPixels`) 보낸다; 판정 카운터.
-- **fd 관리자 하나**: 드라이버는 open 마다 `RDN-R4 open/close` 를 로그하고 open 은 단일 걸쇠다(`OSRDNDisplay.m:184-236`).  행마다 열면 로그 600 줄·걸쇠 충돌.  기존 `triHeldFd`(환경변수 `OSRDN_TRI_HOLD`)를 **프로그램적 hold** 로 확장: `osrdn_tri_hold_set(1)` 이면 `triOpen` 이 fd 를 붙잡고 `triClose` 가 안 닫는다; present 는 `triOpen()/triClose()` 를 그대로 쓴다.  PresentMode(0)·표면 해제에서 hold 해제(`osrdn_tri_hold_set(0)` → 닫는다).  삼각형 경로와 present 가 같은 fd 를 쓴다.
+- **fd 관리자 하나**: 드라이버는 open 마다 `RDN-R4 open/close` 를 로그하고 open 은 단일 걸쇠다(`OSRDNDisplay.m:188-240`).  행마다 열면 로그 600 줄·걸쇠 충돌.  기존 `triHeldFd`(환경변수 `OSRDN_TRI_HOLD`)를 **프로그램적 hold** 로 확장: `osrdn_tri_hold_set(1)` 이면 `triOpen` 이 fd 를 붙잡고 `triClose` 가 안 닫는다; present 는 `triOpen()/triClose()` 를 그대로 쓴다.  PresentMode(0)·표면 해제에서 hold 해제(`osrdn_tri_hold_set(0)` → 닫는다).  삼각형 경로와 present 가 같은 fd 를 쓴다.
 - 카운터 노출 `OSRDNMesaPresentCounts(...)`(ok/refused[8]/stoodDown).
 
 ### 2-3. 데모 `test/osrdn-sdl-teapot.c`
@@ -95,11 +95,11 @@ Matrox `openstep-mga-sdl-teapot.c` 를 복사해 심볼만 radeon 것으로(카�
 |---|---|---|
 | 행당 15–20 us 는 과소: 첫 폴링 실패 시 `IODelay(10)`, 대기 둘 | `osrdn_cp.m:224-287` 원문(폴링 → 스핀 → `IODelay(C_TICK_US)`), `M2B_PLAN.md:188-203`(ZCLEAR 대기 58 us, 스핀 −3 %) | ✅ 채택 — 30–40 us 로 고침, 스핀 손잡이는 M2b 대로 안 켠다 |
 | `cpSubmitFence` 직렬화·MMIO read 고정비, WBINVD 는 기본 꺼짐 | `osrdn_cp.m:741-760` | ✅ 사실(추정에 포함) |
-| 클레임은 splhigh 플래그 교환, BUSY 즉시 반환 | `osrdn_mode.m:911-924` | ✅ |
-| `osrdn_mode_cp` 는 `arg,len` 뿐 → 전용 진입·클레임 안 조립 | `osrdn_mode.m:1442-1444` 원문 | ✅ 채택 — `osrdn_mode_present` + `presentReq` |
+| 클레임은 splhigh 플래그 교환, BUSY 즉시 반환 | `osrdn_mode.m:901-914` | ✅ |
+| `osrdn_mode_cp` 는 `arg,len` 뿐 → 전용 진입·클레임 안 조립 | `osrdn_mode.m:1473-1475` 원문 | ✅ 채택 — `osrdn_mode_present` + `presentReq` |
 | 미러 전체 억제는 M3g·명시적 읽기·해제·거절 fallback 을 깬다 | `OSRDNMesaHook.c:1408-1425`, `OSRDNMesaHook.c:1978-1987`, `OSRDNMesaSurface.c:341-353` 원문 | ✅ 채택 — Finish 에서만 억제 |
 | 두 번째 컨텍스트가 첫 표면을 present 할 수 있다 | `OSRDNMesaSurface.c:176-179`(단일 owner) | ✅ 채택 — 현재 컨텍스트 = owner 검사(`osmesa.c:1994`) |
-| `OSRDNMesaProbeDeviceFd` 없음, open 마다 로그, 단일 걸쇠 → 공유 fd 관리자 | `OSRDNDisplay.m:213-236` 로그, `OSRDNMesaTri.c:373-411` `triHeldFd` | ✅ 채택 — hold 를 프로그램적으로 |
+| `OSRDNMesaProbeDeviceFd` 없음, open 마다 로그, 단일 걸쇠 → 공유 fd 관리자 | `OSRDNDisplay.m:217-240` 로그, `OSRDNMesaTri.c:373-411` `triHeldFd` | ✅ 채택 — hold 를 프로그램적으로 |
 | world5 에 원시 링 기록기가 없다(R6W 는 해석된 쓰기) | `world5.c:222-223`, `world5.c:1214-1215` | ✅ 채택 — `wptrWritten` 캡처 + `sim_present.py` |
 
 ## 7. 구현 기록 (2026-09-26, 코딩 — 계획 검토 2 회 뒤)
@@ -142,7 +142,7 @@ Matrox `openstep-mga-sdl-teapot.c` 를 복사해 심볼만 radeon 것으로(카�
 | 자리 | 우리 | 참조 / Matrox | 실측 |
 |---|---|---|---|
 | 깊이 클리어 | **CPU 가 VRAM 창에 243k 워드 직접 쓰기** `OSRDNMesaDepth.c`(G3b 전, CPU 루프)(+ Mesa 소프트웨어 색·깊이 클리어) | `radeon_cp_dispatch_clear`: 색은 `CNTL_PAINT_MULTI` 2D 채우기, 깊이는 **우리 `cpR6State` 와 같은 상태 블록**으로 3D 사각형(`radeon_state.c:1076-1200`); Matrox 는 엔진 | glClear ≈ 250 ms/프레임 |
-| 제출당 로그 | `r7bSubmit` 끝 `IOLog("RDN-R7B submit…")` **무조건**(`OSRDNDisplay.m:1342`) | 참조·Matrox: 제출당 로그 없음 | **ioctl 4,525 us/제출**(커널 CP 연산은 338 us); **syslogd 를 SIGSTOP 하니 290 us** → 그리기 143 → 21 ms/프레임.  IOLog 는 syslogd 가 배달 중이면 그 줄을 기다린다 |
+| 제출당 로그 | `r7bSubmit` 끝 `IOLog("RDN-R7B submit…")` **무조건**(`OSRDNDisplay.m:1377`) | 참조·Matrox: 제출당 로그 없음 | **ioctl 4,525 us/제출**(커널 CP 연산은 338 us); **syslogd 를 SIGSTOP 하니 290 us** → 그리기 143 → 21 ms/프레임.  IOLog 는 syslogd 가 배달 중이면 그 줄을 기다린다 |
 | 제출 뒤 대기 | rptr·idle 두 대기 | 참조는 그냥 돌아옴 | 73 us/제출(tstage `wait`) — 지금은 작다 |
 | 프레임당 제출 수 | RenderFinish 마다(32) | Matrox 도 같음; 참조는 16 KB 버퍼 | 로그만 빼면 32×0.29 = 9 ms |
 

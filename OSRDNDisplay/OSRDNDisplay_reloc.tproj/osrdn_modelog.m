@@ -139,12 +139,14 @@ osrdn_bright_line(const osrdn_mode_state *mode, int level, int result)
 void
 osrdn_wait_lines(const osrdn_mode_state *mode)
 {
-    IOLog("RDN-R2B waits enter aw=%u/%d ar=%u/%d%s ps=%u/%d sh=%u/%d\n",
+    /* sh= was step 13's two-second look, removed by REL3; hs= is the sync
+       adjustment the last entry used and whether the row refused it */
+    IOLog("RDN-R2B waits enter aw=%u/%d ar=%u/%d%s ps=%u/%d hs=%d/%d\n",
           (unsigned int)mode->wAtomicW.evals, mode->wAtomicW.limit,
           (unsigned int)mode->wAtomicR.evals, mode->wAtomicR.limit,
           mode->atomicReadSkipped ? "(skipped)" : "",
           (unsigned int)mode->wSettle.evals, mode->wSettle.limit,
-          (unsigned int)mode->wShow.evals, mode->wShow.limit);
+          (int)mode->hsyncAdj, mode->hsyncRefused);
     IOLog("RDN-R2B waits revert raw=%u/%d rar=%u/%d%s rps=%u/%d rss=%u/%d trig=%u/%d\n",
           (unsigned int)mode->wRevAtomicW.evals, mode->wRevAtomicW.limit,
           (unsigned int)mode->wRevAtomicR.evals, mode->wRevAtomicR.limit,

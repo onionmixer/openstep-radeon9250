@@ -2,8 +2,8 @@
 
 ## 1. 무엇을 찾았나
 
-`rdnDevOpen`(`OSRDNDisplay.m:125-184`)과 `rdnDevClose`(`OSRDNDisplay.m:212-236`)가
-**무조건 `IOLog` 한다**.  `quiet` 게이트는 제출 경로에만 있고(`OSRDNDisplay.m:1273`)
+`rdnDevOpen`(`OSRDNDisplay.m:129-188`)과 `rdnDevClose`(`OSRDNDisplay.m:216-240`)가
+**무조건 `IOLog` 한다**.  `quiet` 게이트는 제출 경로에만 있고(`OSRDNDisplay.m:1308`)
 열고닫기는 안 덮는다.
 
 그래서 노드를 안 잡는 팔은 **제출마다 로그 줄 둘**을 더 낸다.  판정기가 "열고닫기" 라
@@ -36,16 +36,16 @@ M1n 이 이 모순을 이미 적어 두었다(`M1N_PLAN.md:154`): "로그 747 + 
         IOLog("RDN-R4 open ...");
 
 `rdnCp` 는 **인스턴스 변수**(`OSRDNDisplay.h:23`)이고 `rdnDevOpen` 은 **파일 범위의
-static C 함수**(`OSRDNDisplay.m:175-176`)다 — `self` 가 없으니 그 이름이 안 보인다.
+static C 함수**(`OSRDNDisplay.m:179-180`)다 — `self` 가 없으니 그 이름이 안 보인다.
 그 경로가 쓰는 것은 전부 파일 범위 static 이다(`rdnVmapNonce`·`rdnVmapOpens`·
-`rdnR7bHeld`, `OSRDNDisplay.m:146-171`).
+`rdnR7bHeld`, `OSRDNDisplay.m:150-175`).
 
 #### 다리는 이미 있다 — 새로 놓지 않는다
 
-`rdnR7bInstance`(`OSRDNDisplay.m:159`)가 그것이다.  `d_ioctl` 이 이미 그것으로 객체에
-들어간다(`OSRDNDisplay.m:260`).  설치 순서도 안전한 쪽이다:
-콜백 등록 → `rdnR7bInstance = self`(`OSRDNDisplay.m:1403`) → `rdnVmapState = OSRDN_VMAP_ON`(`OSRDNDisplay.m:1404`),
-그리고 열기 경로는 `rdnVmapState != ON` 이면 **객체를 건드리기 전에** 거절한다(`:180`).
+`rdnR7bInstance`(`OSRDNDisplay.m:163`)가 그것이다.  `d_ioctl` 이 이미 그것으로 객체에
+들어간다(`OSRDNDisplay.m:264`).  설치 순서도 안전한 쪽이다:
+콜백 등록 → `rdnR7bInstance = self`(`OSRDNDisplay.m:1438`) → `rdnVmapState = OSRDN_VMAP_ON`(`OSRDNDisplay.m:1439`),
+그리고 열기 경로는 `rdnVmapState != ON` 이면 **객체를 건드리기 전에** 거절한다(`OSRDNDisplay.m:184`).
 그러니 **성공 경로에서는 인스턴스가 반드시 있다.**
 
 C 함수에서 ivar 은 여전히 못 보므로 작은 메서드 하나를 둔다 — `d_ioctl` 이 쓰는 것과
@@ -97,10 +97,10 @@ M1l 실행이 먼저 상한을 다 쓰면 그 뒤에 도는 R4 게이트가 자�
 
 | codex 주장 | 내 검증 방법 | 판정 |
 |---|---|---|
-| `rdnCp` 는 ivar 이고 두 진입점은 `self` 없는 static C 함수라 그 식은 성립 안 한다 | **codex 회신 전에 내가 먼저 잡아 §2-2 를 고쳐 뒀다**(`OSRDNDisplay.h:23`, `OSRDNDisplay.m:175-176`) | ✅ 사실 |
-| 다리는 `rdnR7bInstance` 이고, 콜백 등록 → 인스턴스 대입(`OSRDNDisplay.m:1403`) → 상태 ON(`OSRDNDisplay.m:1404`) 순서라 성공 경로에서는 유효하다 | 셋 다 열었다.  거절 경로가 객체를 안 건드리는 것도 `OSRDNDisplay.m:180` 에서 확인 | ✅ **채택** — 내가 새로 놓으려던 `rdnCpPtr` 을 버리고 이것을 쓴다 |
+| `rdnCp` 는 ivar 이고 두 진입점은 `self` 없는 static C 함수라 그 식은 성립 안 한다 | **codex 회신 전에 내가 먼저 잡아 §2-2 를 고쳐 뒀다**(`OSRDNDisplay.h:23`, `OSRDNDisplay.m:179-180`) | ✅ 사실 |
+| 다리는 `rdnR7bInstance` 이고, 콜백 등록 → 인스턴스 대입(`OSRDNDisplay.m:1438`) → 상태 ON(`OSRDNDisplay.m:1439`) 순서라 성공 경로에서는 유효하다 | 셋 다 열었다.  거절 경로가 객체를 안 건드리는 것도 `OSRDNDisplay.m:184` 에서 확인 | ✅ **채택** — 내가 새로 놓으려던 `rdnCpPtr` 을 버리고 이것을 쓴다 |
 | **생 플래그는 리스보다 오래 산다** — 마지막 제출이 budget 을 0 으로 만들어도 `quiet` 는 다음 제출까지 1 | 함수 본문을 읽고 **python 으로 재현**(위 표).  제출이 멈추면 영원히 1 | ✅ **채택 — 내 §2-2 의 "결합이 없다" 는 거짓이었다** |
-| **`quiet` 가 걸린 채 다른 열기가 거절되면 그 거절 줄이 사라지고, 그것이 `judge_r7b.py:107` 이 요구하는 줄이다** | `d_ioctl`(`OSRDNDisplay.m:260`) → `cpQuiet`, 그리고 거절 경로(`OSRDNDisplay.m:180-218`) | ✅ **채택** — 거절은 무조건 말한다 |
+| **`quiet` 가 걸린 채 다른 열기가 거절되면 그 거절 줄이 사라지고, 그것이 `judge_r7b.py:107` 이 요구하는 줄이다** | `d_ioctl`(`OSRDNDisplay.m:264`) → `cpQuiet`, 그리고 거절 경로(`OSRDNDisplay.m:184-222`) | ✅ **채택** — 거절은 무조건 말한다 |
 | 직접 읽기가 리스를 안 깎는 것 자체는 맞다 | `osrdn_cp_quiet_take` 이 `quietBudget--` 한다(c5c1c36f 판 osrdn_cp.m 2486행) | ✅ 사실 — 그래서 `peek` 도 아무것도 안 바꾼다 |
 | 두 게이트의 자체시험 고정물은 quiet 를 안 걸고 시작한다 | `judge_r7b.py:123` 의 고정물을 열었다 | ✅ 사실 |
 

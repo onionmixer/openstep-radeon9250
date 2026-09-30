@@ -38,7 +38,7 @@ G5-0 §8-2 가 남긴 마지막 큰 덩어리다: 제출마다 CPU 가 **카드�
 
 - **s2ring 1121 − (put+fence+wait) ≈ 976 us 가 카드 시간**이다.  `wait` 가 그것을 안 담는 이유: W_RPTR 대기는 rptr 이 움직일 때마다 시계를 **다시 시작**한다(`osrdn_cp.m:245-250`, 참조 `radeon_cp.c:1918` `head != last_head → i = 0`).
 - 검증 장치 중 **생산 경로에서 없어질 수 있는 것**: pre 20 + s1ring 37 + s1read 13 + flush 12 + tail 45 = **127 us/제출**(python).  gates·s2asm·put·fence 는 남는다.
-- 클라이언트의 `drawn` 은 **도어벨 전에** 정해진다: `cpR7Verify` 가 스테이징된 워드를 판정하고(`osrdn_cp.m:3154-3157`), `r7bRun` 은 `live == RAN && r7Why == OK` 를 `drawn` 으로 돌려준다(`OSRDNDisplay.m:1329`).  즉 "그렸다" 가 아니라 이미 "검증되어 링에 들어갔다" 의 뜻이고, 이 칸은 그 뜻을 **바꾸지 않는다** — 뒤의 대기만 뺀다.
+- 클라이언트의 `drawn` 은 **도어벨 전에** 정해진다: `cpR7Verify` 가 스테이징된 워드를 판정하고(`osrdn_cp.m:3154-3157`), `r7bRun` 은 `live == RAN && r7Why == OK` 를 `drawn` 으로 돌려준다(`OSRDNDisplay.m:1364`).  즉 "그렸다" 가 아니라 이미 "검증되어 링에 들어갔다" 의 뜻이고, 이 칸은 그 뜻을 **바꾸지 않는다** — 뒤의 대기만 뺀다.
 
 ### 1-2. 다음 접촉이 어디서 기다리나 — 링은 FIFO 고, 모든 접촉이 같은 링을 쓴다
 
@@ -48,13 +48,13 @@ G5-0 §8-2 가 남긴 마지막 큰 덩어리다: 제출마다 CPU 가 **카드�
 | PRESENT | `cpPresent` 가 13 워드를 **같은 `cpR6Submit`** 으로(`osrdn_cp.m:3944-3958`), 첫 워드가 `WAIT_UNTIL 3D_IDLECLEAN|HOST_IDLECLEAN`(`osrdn_cp.m:1450`) | 카드가 **자기 안에서** 앞 그리기 완료·캐시 정리를 기다린 뒤 블릿한다.  참조의 블릿 앞 WAIT 와 같다(`radeon_drv.h` 1914-1922) |
 | CLEAR | 같은 `cpR6Submit`, 첫 워드 같은 WAIT | 같음 |
 | STOP·모드 복귀 | `osrdn_cp_quiesce` → `cpStop` 이 **W_RPTR(wptr) → W_IDLE → CSQ off** 를 기다린다(`osrdn_cp.m:4104-4112`) | 복귀 전에 링이 빈다 — **이미 retire 다** |
-| 문자 장치 마지막 close | `rdnDevClose`(`OSRDNDisplay.m:220-236`): 걸쇠만 푼다, 대기 없음 | §2-5 에서 retire 를 붙인다 |
+| 문자 장치 마지막 close | `rdnDevClose`(`OSRDNDisplay.m:224-240`): 걸쇠만 푼다, 대기 없음 | §2-5 에서 retire 를 붙인다 |
 
 `cpR6Submit` 은 오늘 **자리 검사가 없다**(진입 게이트 `rptr == wptr` 이 "링이 비었다" 를 보증하므로).  §2-2 가 그 자리에 자리 대기를 넣는다 — 그러면 present/clear/다른 op 는 **코드 변경 없이** 앞 제출 뒤에 줄을 선다.
 
 ### 1-3. Matrox W5 §8 의 "완료 주체" 문제가 여기서는 어떻게 다른가
 
-- W5 는 `stormBusy` 가 **ioctl 사이에도 잡혀 있어** present·2D·모드 변경이 다음 3D 제출까지 막히는 것이 문제였다.  이 드라이버의 클레임(`modeClaim`/`modeFinish`, `osrdn_mode.m:1449-1476`)은 **한 ioctl 안에서만** 잡힌다.  카드가 그리는 동안 클레임은 풀려 있고, 다음 사용자가 클레임을 잡고 **링에 줄을 선다**(§1-2).  "완료 주체" 는 **다음 링 접촉의 자리 대기**다 — present 는 프레임마다 오고, 게임이 끝나면 close·모드 복귀가 온다.
+- W5 는 `stormBusy` 가 **ioctl 사이에도 잡혀 있어** present·2D·모드 변경이 다음 3D 제출까지 막히는 것이 문제였다.  이 드라이버의 클레임(`modeClaim`/`modeFinish`, `osrdn_mode.m:1480-1507`)은 **한 ioctl 안에서만** 잡힌다.  카드가 그리는 동안 클레임은 풀려 있고, 다음 사용자가 클레임을 잡고 **링에 줄을 선다**(§1-2).  "완료 주체" 는 **다음 링 접촉의 자리 대기**다 — present 는 프레임마다 오고, 게임이 끝나면 close·모드 복귀가 온다.
 - W5 §5 의 "유저랜드가 VRAM 을 직접 매핑해 막을 수 없는 drain" — 이 라이브러리도 창을 매핑한다(`OSRDNMesaSurface.c:126`).  CPU 가 그 창을 **읽거나 쓰는 자리는 셋뿐**이고 전부 라이브러리 안이다(§1-4).  게임은 창에 닿지 않는다.
 
 ### 1-4. 유저랜드가 카드의 목적지·소스에 닿는 자리 (전수 — **codex Q2 로 정정**, §9)
@@ -258,7 +258,7 @@ G2 가 실패하면(그림이 다르면) 자리·순서 가정이 틀린 것이�
 ## 8. 자체 확인 (codex 전)
 
 - `cpR6Submit` 호출자 전수: `grep -n "cpR6Submit(" osrdn_cp.m` — cpZclear(1·2 단계), cpPresent, cpClear, R6 케이스들.  전부 빈 링에서 부르므로 자리 대기는 no-op.
-- `rdnDevClose` 는 caller 문맥에서 돈다(`OSRDNDisplay.m:135-137`) — ioctl 과 같은 조건으로 기다려도 된다.
+- `rdnDevClose` 는 caller 문맥에서 돈다(`OSRDNDisplay.m:139-141`) — ioctl 과 같은 조건으로 기다려도 된다.
 - 프리픽스 32 + 2 + 10 + 4,036 = 4,080 (python).  `CP_R6_WORDS` 4,080 이라 `w[]` 배열도 그대로 맞는다.
 - 스트림 동일성: 생산 op 가 카드에 보이는 워드 = 오늘의 1 단계 + 2 단계 워드를 **한 줄로 이은 것**(센티넬은 MMIO 였으므로 링에 없다).  `tools/r6/sim_r6.py` 의 스트림 모형은 바뀌지 않는다.
 - 섞어 쓰기: 비행 중에 ZCLEAR(SUBMIT2·R6 케이스·ZPREP) 가 오면 `cpIdleGate` 가 `CP_WHY_ACTIVE` 로 거절한다(`osrdn_cp.m:3199`, codex 확인).  **경합이 아니라 거절**이고 거절은 소프트웨어로 간다 — 안전하다.  라이브러리는 한 프로세스 안에서 SUBMIT2 와 SUBMIT3 을 섞지 않는다(knob 은 프로세스 단위); 진단 도구는 앞 프로세스의 close backstop 뒤에 온다.

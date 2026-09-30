@@ -138,7 +138,7 @@ python 으로 `.git`·`build/`·`ref/` 를 뺀 저장소 전체를 훑었다:
 | `osrdn_cp.m:3503` | `c->zstage = 2;` | 합친 경로의 첫 표시 |
 | `osrdn_cp.m:3520` | `c->zstage = 3;` | 그대로 |
 | `osrdn_cp.m:4150` | 연산마다 `c->zcase = c->zstage = 0;` | 그대로 |
-| `osrdn_modelog.m:406` | `RDN-R6 zclear ... stage=%d ... prebad=%02x` | 그대로 — **판정기는 이 줄만 읽는다** |
+| `osrdn_modelog.m:408` | `RDN-R6 zclear ... stage=%d ... prebad=%02x` | 그대로 — **판정기는 이 줄만 읽는다** |
 | `world5.c:2287` | 정상 경로가 `zstage == 3` 로 끝나는지 | 그대로 통과해야 한다 |
 | `world5.c:2519` | **프리픽스를 떨어뜨리면 `zstage == 1` 이고 `r6Draws == w0`** | **이 칸이 바꾸는 바로 그 성질** |
 | `world5.c:2296`, `world5.c:2520` | 위 둘의 실패 메시지 | |

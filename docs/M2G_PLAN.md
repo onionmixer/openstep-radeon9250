@@ -21,10 +21,10 @@
 
 | 자리 | 사실 |
 |---|---|
-| `OSRDNDisplay.m:1273` | `quiet = osrdn_cp_quiet_take(&rdnCp);` — **유일한 호출** |
+| `OSRDNDisplay.m:1308` | `quiet = osrdn_cp_quiet_take(&rdnCp);` — **유일한 호출** |
 | `OSRDNDisplay.m:975,985,993,997` | 게이트가 덮는 `IOLog` 는 **넷**.  `RDN-R7B stage`·`RDN-R5 begin`·`RDN-R5 skip`·그 뒤 한 줄 |
-| `OSRDNDisplay.m:1236` 부근 | `RDN-R7B reject` 는 **게이트 밖** — 거절은 언제나 말한다 |
-| `osrdn_modelog.m:349` | `RDN-R5 tstage` 도 **게이트 밖** — `tdump` 는 조용해도 말한다 |
+| `OSRDNDisplay.m:1271` 부근 | `RDN-R7B reject` 는 **게이트 밖** — 거절은 언제나 말한다 |
+| `osrdn_modelog.m:351` | `RDN-R5 tstage` 도 **게이트 밖** — `tdump` 는 조용해도 말한다 |
 | `osrdn_cp.m:2942-2952` | `cpQuiet(lease)`: `lease != 0` → 켜고, `0` → **지금 말한다** |
 | `osrdn_cp.m:3009-3028` | `osrdn_cp_quiet_take`: 예산 0 이면 `quiet` 를 **스스로 내린다** |
 | `osrdn_cp.h:98` | 리스의 근거 — "도구가 죽어도 머신이 **영원히 조용한 채** 남지 않는다" |
@@ -67,8 +67,8 @@
 |---|---:|---|
 | `osrdn_cp.h` | 3 | `CP_OP_LOUD` 정의, `CP_OP_LAST`, 필드 둘 |
 | `osrdn_cp.m` | 2 | `cpLoud()`, `osrdn_cp_loud_take()` |
-| `OSRDNDisplay.m` | 1 | `OSRDNDisplay.m:1273` 의 한 줄이 둘을 본다 |
-| `osrdn_modelog.m:254` | 1 | 이름표에 `"loud"` |
+| `OSRDNDisplay.m` | 1 | `OSRDNDisplay.m:1308` 의 한 줄이 둘을 본다 |
+| `osrdn_modelog.m:256` | 1 | 이름표에 `"loud"` |
 | `rdnr5cp.m:51` | 1 | **같은 이름표** — 두 곳이 갈리면 번호가 어긋난다 |
 | `build/m1l/run_m1l.sh` | **20** | `quiet 5000` ×11, `quiet 0` ×9 — **주석을 빼고 센 것** |
 
@@ -158,15 +158,15 @@ FAIL 이 아니라 **값**으로 나온다.  이게 이 칸의 주된 위험이�
 |---|---|---|---|
 | C1 | `abba()` 가 `quiet "$3"` 를 **변수로** 내고 ab1·ab4 는 로그 켬 | c5c1c36f 판 run_m1l.sh 323-333행 열람 — `abba ab1 41000 0`, `ab4 … 0` | ✅ 채택.  내 셈(숫자 리터럴)과 팔 탐지(`t-[a-z0-9]+` 리터럴)가 **둘 다** 변수를 못 봤다 |
 | C1' | (내가 추가로 찾음) 그리드 8 셀도 `quiet 0` 아래 | c5c1c36f 판 run_m1l.sh 352-361행 — 경로 `t-grid-$gl-$gn` 도 변수 | ✅ |
-| C2a | 일반 CP 연산은 게이트 밖에서 `begin` 을 찍는다 | `OSRDNDisplay.m:668-682` | ✅ |
+| C2a | 일반 CP 연산은 게이트 밖에서 `begin` 을 찍는다 | `OSRDNDisplay.m:703-717` | ✅ |
 | C2b | 판정기가 "짝이 비었나" 만 보고 **개수**를 안 본다 | `judge_m1l.py:321-335` — `if not rows` 뿐.  `t-grid.drv` 는 부팅 전체(`run_m1l.sh:576-579`)라 **다른 로그 켬 팔의 짝이 섞이면** 그리드가 조용해도 통과 | ⚖️ 부분 — 빈 경우는 이미 FAIL(내 초판이 맞음), 부분 침묵은 못 잡음(codex 가 맞음).  **셈 검사 추가** |
 | C3 | `t-stock` 은 소프트웨어 | `run_m1l.sh:15-17, 137-139` | ✅ (내가 `end-tri 0/0` 로 먼저 고쳤다) |
 | C4 | **스테이징 실패는 조용하면 무음** | c5c1c36f 판 OSRDNDisplay.m 975-981행 — `ok=%d` 줄이 `if (!quiet)` 안, `!staged` 면 바로 반환 | ✅ 채택.  **내 §2 "거절은 언제나 말한다" 가 틀렸다** — 검증 거절(:950)에만 맞다 |
 | C5 | `quiet 491` 은 호출이 아니다 | `run_m1l.sh:407, 552` 둘 다 주석 | ✅ (내 §4-1 과 같음) |
 | C6 | **`c->quiet` 가 로그만이 아니라 계산을 가른다** | c5c1c36f 판 osrdn_cp.m 2988-2996행 다이제스트(256 읽기 → 2), c5c1c36f 판 osrdn_cp.m 3033행 커버리지 1,088 읽기.  `c->quiet` 전수 grep: 2435·2480·2483·2988·2990·3033 | ✅ 채택 — **이 계획의 가장 큰 구멍.**  §3-2 의 식은 로그만 끄므로 기본값이 **489 로 안 내려간다** |
-| C6' | (내가 추가로 찾음) 그 계산은 R6 진단도 탄다 | `cpZclear` 호출자 전수 = `osrdn_cp.m:4223` 하나(`CP_OP_ZCLEAR`), 클라이언트는 `OSRDNDisplay.m:1295` 에서 같은 연산, R6 진단은 setIntValues 로 같은 연산.  `tools/r6/sim_r6.py`·`gouraud_oracle.py`·`scissor_oracle.py` 가 다이제스트·커버리지를 판정 | ✅ — **필드를 기본 조용으로 두면 R6 판정이 눈먼다** |
+| C6' | (내가 추가로 찾음) 그 계산은 R6 진단도 탄다 | `cpZclear` 호출자 전수 = `osrdn_cp.m:4223` 하나(`CP_OP_ZCLEAR`), 클라이언트는 `OSRDNDisplay.m:1330` 에서 같은 연산, R6 진단은 setIntValues 로 같은 연산.  `tools/r6/sim_r6.py`·`gouraud_oracle.py`·`scissor_oracle.py` 가 다이제스트·커버리지를 판정 | ✅ — **필드를 기본 조용으로 두면 R6 판정이 눈먼다** |
 | C7 | `quiet` 가 `loud` 를 가리면 `loud` 예산이 잠복했다 되살아난다 | 설계 판정 — 아래 §9 에서 상호배타로 만들어 경로 자체를 없앤다 | ✅ 채택 |
-| C8 | `RDN-R7B submit` 은 무조건 찍힌다 | `OSRDNDisplay.m:1342-1345` | ✅ 사실.  **M2g 에선 그대로 둔다** — 오늘의 조용한 팔도 이 줄을 내므로 목표값(≈190)에 이미 들어 있고, 같이 바꾸면 두 변경이 섞인다 |
+| C8 | `RDN-R7B submit` 은 무조건 찍힌다 | `OSRDNDisplay.m:1377-1380` | ✅ 사실.  **M2g 에선 그대로 둔다** — 오늘의 조용한 팔도 이 줄을 내므로 목표값(≈190)에 이미 들어 있고, 같이 바꾸면 두 변경이 섞인다 |
 | C9 | `cpQuiet` 가 상태를 쓴다 | `osrdn_cp.m:2951-2952` | ✅ |
 
 **내가 틀린 것 넷**: 호출 수(23→20), 로그 켬 팔(여섯→실제 넷+ab 둘+그리드 여덟), "거절은 언제나 말한다", 그리고 **계산 게이트를 못 봤다**.
@@ -186,7 +186,7 @@ FAIL 이 아니라 **값**으로 나온다.  이게 이 칸의 주된 위험이�
     *copy = *cp;
     modeFinish(mode, base);        /* 여기서 claim 을 놓는다 */
 
-(`osrdn_mode.m:1442-1476`.)  호출자: `r7bSubmit` 은 `quiet` 를, setIntValues(R6 진단)는
+(`osrdn_mode.m:1473-1507`.)  호출자: `r7bSubmit` 은 `quiet` 를, setIntValues(R6 진단)는
 **0** 을 넘긴다.  `cpZclear` 의 세 게이트(c5c1c36f 판 osrdn_cp.m 2988행·c5c1c36f 판 osrdn_cp.m 2990행·c5c1c36f 판 osrdn_cp.m 3033행)는
 `c->quiet` 대신 `c->subQuiet` 를 본다.
 
@@ -232,10 +232,10 @@ FAIL 이 아니라 **값**으로 나온다.  이게 이 칸의 주된 위험이�
 
 | # | codex 주장 | 내 확인 | 판정 |
 |---|---|---|---|
-| R2-1 | 974 에서 세우면 스테이징 실패 반환(979-982)으로 1 이 샌다 | `OSRDNDisplay.m:1273-1331` 의 `return` 전수 = **981 하나**.  나도 codex 회신 전에 같은 것을 찾았다 | ✅ |
+| R2-1 | 974 에서 세우면 스테이징 실패 반환(979-982)으로 1 이 샌다 | `OSRDNDisplay.m:1308-1366` 의 `return` 전수 = **981 하나**.  나도 codex 회신 전에 같은 것을 찾았다 | ✅ |
 | R2-2 | `cpZclear` 밖의 계산 게이트는 없다 | `c->quiet` 전수 grep(세 파일): 2435·2480·2483·2988·2990·3033, c5c1c36f 판 osrdn_modelog.m 374-376행 은 보고용 `RDN-R6 zq` 줄 | ✅ |
-| R2-3 | `cpZclear` 는 `osrdn_cp_run` 하나만 부르고 그건 claim 뒤에서만 돈다 | `osrdn_cp.m:2513-2515` 주석, c5c1c36f 판 osrdn_cp.m 3292-3293행, `osrdn_mode.m:1450-1476`(`modeClaim` → `osrdn_cp_run` → `modeFinish`) | ✅ |
-| R2-4 | **claim 밖에서 세우고 내리면 경합** — R7 이 claim 을 놓은 뒤 내리기 전에 R6 가 잡으면 1 을 본다 | 호출자 전수 = `OSRDNDisplay.m:670`(R6)·c5c1c36f 판 OSRDNDisplay.m 988행(R7).  `OSRDNDisplay.m:85-87` 이 "경쟁 호출자가 있다" 고 명시.  **내 대안("`cpZclear` 진입 시 지역 변수로 복사")은 한쪽 창만 막는다** — R6 가 R7 의 해제 직후 진입하면 1 을 복사한다 | ✅ 채택 — 9-1 을 claim 안으로 옮겼다 |
+| R2-3 | `cpZclear` 는 `osrdn_cp_run` 하나만 부르고 그건 claim 뒤에서만 돈다 | `osrdn_cp.m:2513-2515` 주석, c5c1c36f 판 osrdn_cp.m 3292-3293행, `osrdn_mode.m:1481-1507`(`modeClaim` → `osrdn_cp_run` → `modeFinish`) | ✅ |
+| R2-4 | **claim 밖에서 세우고 내리면 경합** — R7 이 claim 을 놓은 뒤 내리기 전에 R6 가 잡으면 1 을 본다 | 호출자 전수 = `OSRDNDisplay.m:705`(R6)·c5c1c36f 판 OSRDNDisplay.m 988행(R7).  `OSRDNDisplay.m:89-91` 이 "경쟁 호출자가 있다" 고 명시.  **내 대안("`cpZclear` 진입 시 지역 변수로 복사")은 한쪽 창만 막는다** — R6 가 R7 의 해제 직후 진입하면 1 을 복사한다 | ✅ 채택 — 9-1 을 claim 안으로 옮겼다 |
 
 ## 11. 같이 고쳐야 하는 검사기 규칙 (약화 말고 정밀화)
 
@@ -259,9 +259,9 @@ FAIL 이 아니라 **값**으로 나온다.  이게 이 칸의 주된 위험이�
 | `osrdn_cp.m:2964` | `cpLoud` — `loudBudget = N`, `quiet` 리스를 지운다 |
 | `osrdn_cp.m:3023` | `quiet_take` — `loudBudget` 이 남았으면 하나 깎고 말한다, 아니면 삼킨다 |
 | `osrdn_cp.m:3539`·`osrdn_cp.m:3541`·`osrdn_cp.m:3584` | 세 계산 게이트가 `c->subQuiet` 를 본다 |
-| `osrdn_mode.m:1450-1474` | `modeClaim` 과 `modeFinish` 사이에서만 `subQuiet` 를 세우고(`osrdn_mode.m:1469`) 내린다(`osrdn_mode.m:1471`) |
-| `OSRDNDisplay.m:1280` | `if (!quiet \|\| !staged)` — 실패한 스테이징은 말한다 |
-| `OSRDNDisplay.m:1295-1296` | 클라이언트 제출이 `quiet` 를 넘긴다; 진단 경로는 `0` |
+| `osrdn_mode.m:1481-1505` | `modeClaim` 과 `modeFinish` 사이에서만 `subQuiet` 를 세우고(`osrdn_mode.m:1500`) 내린다(`osrdn_mode.m:1502`) |
+| `OSRDNDisplay.m:1315` | `if (!quiet \|\| !staged)` — 실패한 스테이징은 말한다 |
+| `OSRDNDisplay.m:1330-1331` | 클라이언트 제출이 `quiet` 를 넘긴다; 진단 경로는 `0` |
 
 ### 12-1. 호스트 게이트
 

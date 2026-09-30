@@ -16,7 +16,7 @@ N1–N6 은 그 결과이고, 전부 원문을 열어 확인했다(인용은 `ch
 |---|---|---|
 | N1 | **우리 제출은 동기다.**  WPTR 을 쓴 뒤 RPTR 이 따라올 때까지, 그리고 idle 까지 스핀한다 | `osrdn_cp.m:2417-2441` |
 | N2 | **참고 구현은 그러지 않는다.**  r200 은 `drmCommandWrite(DRM_RADEON_CMDBUF)` 를 부르고 **그냥 돌아온다** — 제출당 GPU 대기가 0 이다 | `r200_ioctl.c:145-148` |
-| N3 | **드라이버가 이미 제출당 대기 시간을 마이크로초로 남긴다** — `cpWait` 가 `IOGetTimestamp` 로 재서 `w->us` 에 넣고, 로그가 `rptr=evals/limit/us` 로 찍는다 | `osrdn_cp.m:231-260`, `osrdn_modelog.m:473-481` |
+| N3 | **드라이버가 이미 제출당 대기 시간을 마이크로초로 남긴다** — `cpWait` 가 `IOGetTimestamp` 로 재서 `w->us` 에 넣고, 로그가 `rptr=evals/limit/us` 로 찍는다 | `osrdn_cp.m:231-260`, `osrdn_modelog.m:475-483` |
 | N4 | **이 문제를 전에 측정했다(Matrox).**  제출당 **85.4 us 고정** + 132.4 ns/dword, 그리고 **엔진 일은 프레임의 1% 미만** | `REMAINING_WORK.md:2853`, `M2_MESA_WARP_CONNECTION.md:57` |
 | N5 | 같은 프로젝트에서 **오프스크린 가속이 소프트웨어보다 480 배 느렸고**, 되읽기를 좁힌 뒤에도 **12.1 배 느렸다** | `M19_MIRROR_COST_PLAN.md:1`·`:18`, `M21_NARROWED_MIRROR_PLAN.md:152-154` |
 | N6 | OPENSTEP `gettimeofday` 는 **분해능 4 us, 호출 한 쌍이 4 us**; 벽시계라 **평균 말고 중앙값**; 계측은 **제출이 잦은 쪽에 더 무겁게 과금**된다 | `REMAINING_WORK.md:2486`, `openstep-mga-mesa-tiercost.c:30-32` |
@@ -187,7 +187,7 @@ b 는 삼각형 한계비이고, 드라이버가 찍는 대기 us 를 a 에서 �
 ## 10. 측정 구간 안에 드라이버의 로그가 있다 (코딩 중에 확인)
 
 r7b 클라이언트 제출 경로는 **제출마다 조건 없이** `begin` 한 줄 + `osrdn_cp_lines`
-(실측 24 줄·2024 B)를 찍는다(`OSRDNDisplay.m:1297-1323`).  스위치는 없다.  그러니
+(실측 24 줄·2024 B)를 찍는다(`OSRDNDisplay.m:1332-1358`).  스위치는 없다.  그러니
 우리가 재는 시간 안에 **syslog 쓰기 24 번**이 들어 있다.
 
 이것을 숨기지 않고, **적합이 알아서 가르게** 둔다:

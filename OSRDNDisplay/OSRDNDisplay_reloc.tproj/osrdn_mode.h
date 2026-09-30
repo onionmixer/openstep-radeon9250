@@ -108,7 +108,6 @@ typedef struct {
 #define MODE_ATOMIC_US          100000UL    /* 6g and 6i limit */
 #define MODE_PLL_SETTLE_US      50000UL     /* 6l, legacy_crtc.c usleep(50000) */
 #define MODE_REVERT_SETTLE_US   100000UL    /* revert 4.7, radeon_driver.c usleep(100000) */
-#define MODE_SHOW_US            2000000UL   /* step 13, the operator looks; step 12 has already read back */
 #define MODE_TICK_MS            5UL         /* one turn of a wait, when we may sleep */
 #define MODE_TICK_US            500UL       /* one turn, when we may not (IODelay is a spin, and
                                                doc/driverkit.md 293-309 says it is safe at any
@@ -135,7 +134,7 @@ typedef struct osrdn_mode_state_s {
     unsigned long   clientValue;        /* what that register held */
 
     /* every bounded wait, entry and revert kept apart (docs/R2_CLOSEOUT.md 8) */
-    osrdn_wait      wAtomicW, wAtomicR, wSettle, wShow;
+    osrdn_wait      wAtomicW, wAtomicR, wSettle;
     osrdn_wait      wRevAtomicW, wRevAtomicR, wRevSettle, wRevSlot, wRevTrig;
     int             atomicReadSkipped, revAtomicReadSkipped;
 
@@ -190,9 +189,9 @@ typedef struct osrdn_mode_state_s {
 
     /* inputs the caller sets before a sequence */
     int             noSleep;            /* wait with IODelay, not IOSleep */
-    int             skipShow;           /* no operator look, and NO TEST PATTERN.  The cycle sets
-                                           it: a mode change does not clear the framebuffer, so
-                                           not painting is what brings the desktop back.  The
+    int             skipShow;           /* do NOT blacken the framebuffer at step 10.  The cycle
+                                           sets it: a mode change does not clear the framebuffer,
+                                           so not painting is what brings the desktop back.  The
                                            first cycle on the machine painted over the desktop
                                            and the window server, having nothing to redraw for,
                                            left the pattern on screen until the next login
@@ -220,14 +219,42 @@ typedef struct osrdn_mode_state_s {
     int             inSequence;
     int             kernelRevertSeen;   /* the kernel reverted while a cycle held the card */
 
+    /* REL3 (docs/REL3_DISPLAY_FIX_PLAN.md 3-2): pixels added to the table's
+     * CRTC_H_SYNC_STRT_WID start field, set by the class from "RDN HSync
+     * Adjust" or its default before the first entry, and by the live
+     * parameter.  modeCrtc and modeVerify both take the word from
+     * osrdn_mode_hsync_word, so an adjustment the row cannot take is
+     * written and expected as 0. */
+    long            hsyncAdj;
+    int             hsyncRefused;       /* the last word computed fell back to 0 */
+
     /* which oracle row this boot's refdiv selected */
     unsigned long   refdiv;
     unsigned long   div3;
 } osrdn_mode_state;
 
-/* step 10: the test pattern for the chosen resolution and format, into the
-   framebuffer the class mapped; it writes nothing past memorySize */
-void osrdn_mode_pattern(const osrdn_mode_state *mode, vm_address_t fb);
+/* step 10: black over the chosen resolution and format, into the framebuffer
+   the class mapped; it writes nothing past memorySize (REL3 3-1: it was the
+   R3 test pattern, which showed through until the window server drew) */
+void osrdn_mode_black(const osrdn_mode_state *mode, vm_address_t fb);
+
+/* REL3 3-2: the CRTC_H_SYNC_STRT_WID word for a table row and an adjustment.
+   The start field moves by adj pixels while the sync stays inside the row's
+   blanking (start + adj >= hdisp - 8, start + adj + width*8 <= htotal - 8);
+   otherwise the table word is returned and *refused is set.  Width and
+   polarity are the table's. */
+unsigned long osrdn_mode_hsync_word(unsigned long hTotalDisp, unsigned long hSync, long adj,
+                                    int *refused);
+
+/* REL3 3-2 5: move the sync of the live mode, one register, under the claim.
+   MODE_HSYNC_* below; the word written and read back are left in *word/*got. */
+#define MODE_HSYNC_SET          0       /* written and read back equal */
+#define MODE_HSYNC_BUSY         1       /* another sequence holds the card */
+#define MODE_HSYNC_NOT_LIVE     2       /* no mode of ours on the card */
+#define MODE_HSYNC_RANGE        3       /* the row cannot take adj; nothing written */
+#define MODE_HSYNC_READBACK     4       /* written, but read back different */
+int osrdn_mode_hsync(osrdn_mode_state *mode, vm_address_t base, long adj,
+                     unsigned long *word, unsigned long *got);
 
 /* R3b-2b results of osrdn_mode_set_transfer / osrdn_mode_set_brightness */
 #define MODE_LUT_IGNORED        0       /* bad arguments, or no resolution chosen yet */

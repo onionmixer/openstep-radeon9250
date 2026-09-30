@@ -95,6 +95,10 @@ def c_escape(t):
 
 
 GRAY_CASES = [None, '256', '16', '4', '2', '8', '0', '', '256 ', ' 16', '1', '2x', '-4', '64']
+HSYNC_CASES = [None, '13', '0', '-16', '48', '-17', '49', '+5', '-0', '013', '0013', '', '+', '-',
+               '5 ', ' 5', '5x', '1e1', '999', '-999', '12.5', '0x10', '++5']
+HSYNC_HAND = {None: (7, 0), '0': (0, 0), '-16': (-16, 0), '48': (48, 0), '-17': (7, 1), '49': (7, 1),
+              '+5': (5, 0), '013': (13, 0), '0013': (7, 1), '': (7, 1), '5 ': (7, 1), '-': (7, 1)}
 GRAY_HAND = {None: (0, 0), '256': (0, 0), '16': (16, 0), '4': (4, 0), '2': (2, 0), '8': (0, 1),
              '256 ': (0, 1), '': (0, 1)}
 
@@ -103,7 +107,9 @@ int printf(const char *, ...);
 void exit(int);
 void osrdn_modesel_choose(const char *, unsigned long, void *);
 int osrdn_modesel_gray(const char *, int *);
+long osrdn_modesel_hsync(const char *, int *);
 static const char *const grays[] = { %(grays)s };
+static const char *const hsyncs[] = { %(hsyncs)s };
 typedef struct { int res, fmt, resDefault, fmtDefault, pairDefault; } sel_t;
 static const char *const inputs[] = { %(inputs)s };
 static const unsigned long mapped[] = { %(mapped)s };
@@ -119,6 +125,11 @@ int main(void)
         int refused = 7, n = osrdn_modesel_gray(grays[k], &refused);
         printf("G %%d %%d\n", n, refused);
     }
+    for (k = 0; k < sizeof hsyncs / sizeof hsyncs[0]; k++) {
+        int refused = 7;
+        long n = osrdn_modesel_hsync(hsyncs[k], &refused);
+        printf("H %%ld %%d\n", n, refused);
+    }
     return 0;
 }
 __attribute__((force_align_arg_pointer))
@@ -132,7 +143,8 @@ def run_unit(unit_path, inputs, work):
     open(drv, 'w').write(DRIVER % dict(
         inputs=', '.join('0' if t is None else c_escape(t) for t, _ in inputs),
         mapped=', '.join('%#xUL' % m for _, m in inputs),
-        grays=', '.join('0' if t is None else c_escape(t) for t in GRAY_CASES)))
+        grays=', '.join('0' if t is None else c_escape(t) for t in GRAY_CASES),
+        hsyncs=', '.join('0' if t is None else c_escape(t) for t in HSYNC_CASES)))
     exe = os.path.join(work, 'drv')
     cmd = ['gcc-12', '-m32', '-std=gnu89', '-O0', '-Wall', '-Wno-deprecated', '-Wno-main', '-I', TPROJ,
            '-x', 'c', unit_path, drv, '-x', 'none', '-nostdlib', '-nostartfiles', LIBC32,
@@ -143,7 +155,8 @@ def run_unit(unit_path, inputs, work):
     r = subprocess.run([exe], capture_output=True, text=True, timeout=30)
     if r.returncode != 0:
         return 'exited %d' % r.returncode
-    return [tuple(int(x) for x in l.split()) if not l.startswith('G ') else ('G',) + tuple(int(x) for x in l.split()[1:])
+    return [tuple(int(x) for x in l.split()) if l[:2] not in ('G ', 'H ')
+            else (l[0],) + tuple(int(x) for x in l.split()[1:])
             for l in r.stdout.splitlines()]
 
 
@@ -162,7 +175,13 @@ def layer2(unit_path, work):
         return [got]
     bad = []
     grays = [g for g in got if g[0] == 'G']
-    got = [g for g in got if g[0] != 'G']
+    hsyncs = [g for g in got if g[0] == 'H']
+    got = [g for g in got if g[0] not in ('G', 'H')]
+    for t, g in zip(HSYNC_CASES, hsyncs):
+        if g[1:] != oracle.hsync(t):
+            bad.append('RDN HSync Adjust %r: unit %s, oracle %s' % (t, g[1:], oracle.hsync(t)))
+    if len(hsyncs) != len(HSYNC_CASES):
+        bad.append('%d HSync answers for %d inputs' % (len(hsyncs), len(HSYNC_CASES)))
     for t, g in zip(GRAY_CASES, grays):
         if g[1:] != oracle.gray(t):
             bad.append('Gray Levels %r: unit %s, oracle %s' % (t, g[1:], oracle.gray(t)))
@@ -179,6 +198,21 @@ def layer2(unit_path, work):
 
 
 MUTATIONS = [
+    ('REL3: the hsync sign is dropped',
+     '        if (*text == \'-\')\n            sign = -1;',
+     '        if (*text == \'-\')\n            sign = 1;'),
+    ('REL3: a four-digit hsync value is taken',
+     '    if (*text != \'\\0\' || digits == 0 || digits > 3 ||',
+     '    if (*text != \'\\0\' || digits == 0 ||'),
+    ('REL3: the hsync upper bound is gone',
+     '        value < OSRDN_HSYNC_MIN || value > OSRDN_HSYNC_MAX) {',
+     '        value < OSRDN_HSYNC_MIN) {'),
+    ('REL3: a refused hsync value is used as written',
+     '        *refused = 1;\n        return OSRDN_HSYNC_DEFAULT;\n    }\n    return value;',
+     '        *refused = 1;\n        return value;\n    }\n    return value;'),
+    ('REL3: trailing text after the hsync digits is accepted',
+     '    if (*text != \'\\0\' || digits == 0 || digits > 3 ||',
+     '    if (digits == 0 || digits > 3 ||'),
     ('the format table is searched from the end',
      '        for (k = 0; k < OSRDN_FMT_COUNT; k++)\n            if (contains(displayMode, osrdnFmtAll[k].token)) {',
      '        for (k = OSRDN_FMT_COUNT - 1; k >= 0; k--)\n            if (contains(displayMode, osrdnFmtAll[k].token)) {'),
@@ -239,7 +273,12 @@ def main():
         if oracle.gray(t) != want:
             print('  FAIL oracle: Gray Levels %r gives %s, a person wrote %s' % (t, oracle.gray(t), want))
             fails += 1
-    print('  %-4s oracle agrees with %d hand-written cases' % ('FAIL' if fails else 'ok', len(HAND) + len(GRAY_HAND)))
+    for t, want in HSYNC_HAND.items():
+        if oracle.hsync(t) != want:
+            print('  FAIL oracle: RDN HSync Adjust %r gives %s, a person wrote %s' % (t, oracle.hsync(t), want))
+            fails += 1
+    print('  %-4s oracle agrees with %d hand-written cases' % ('FAIL' if fails else 'ok',
+                                                                len(HAND) + len(GRAY_HAND) + len(HSYNC_HAND)))
 
     r = subprocess.run(['gcc-12', '-m32', '-std=gnu89', '-O0', '-Wall', '-Wextra', '-Wno-deprecated',
                         '-I', TPROJ, '-x', 'c', '-c', UNIT, '-o', os.path.join(work, 'm32.o')],

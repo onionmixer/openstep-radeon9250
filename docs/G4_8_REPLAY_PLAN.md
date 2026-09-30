@@ -11,7 +11,7 @@
 | # | 사실 | 근거(연 줄) |
 |---|---|---|
 | P1 | 라이브러리의 제출: `osrdn_r7b_submit2` 를 magic·version·nwords·seed·words(자기 캐시 버퍼)로 채우고 `SUBMIT2` ioctl 한 번; 성공 판정은 `status == 0 && why == 0 && drawn != 0`; open 은 제출마다 `open(NODE, NODE_RDWR)`(`/dev/rdnvram0`, 2) | `OSRDNMesaTri.c:40-41`·`:384-390`·`:904-938` |
-| P2 | 커널 SUBMIT2: magic/version 2·`1 ≤ n ≤ 4068`·seed ≠ 0·words ≠ 0·장치 준비를 본 뒤 `CP_R7_APPEND_MAX` 워드씩 `copyin` 해 stage, 그 뒤는 R7a 와 같은 검증·그리기 | `OSRDNDisplay.m:1124-1178`; `osrdn_r7b.h:24`·`:29`·`:87-98` |
+| P2 | 커널 SUBMIT2: magic/version 2·`1 ≤ n ≤ 4068`·seed ≠ 0·words ≠ 0·장치 준비를 본 뒤 `CP_R7_APPEND_MAX` 워드씩 `copyin` 해 stage, 그 뒤는 R7a 와 같은 검증·그리기 | `OSRDNDisplay.m:1159-1213`; `osrdn_r7b.h:24`·`:29`·`:87-98` |
 | P3 | 장치 도구의 열기·CAPS: `mknod`(major<<8)·`open(NODE, O_RDWR)`·`CAPS` ioctl 로 magic/version/window/bytes/maxWords/build/ready/cpRunning/**winStart** 를 받는다; 시드는 run id(0 아님·반복 안 함) | `rdnr7dev.c:66`·`:587-612`·`:676-678` |
 | P4 | 시드 규칙: 0 이 아니고 직전 연산의 것과 달라야(`CP_WHY_SEED`) | `OSRDNMesaTri.c:874-876`; [[runner-must-seed-every-accel-process]] |
 | P5 | breadcrumb: fd 하나를 열어 두고 record 마다 write + fsync (재open 은 마지막 하나만 남긴다) | `ghostprobe_v20.c:108-124`; `nxbreadcrumb.c` 머리말 |
@@ -55,7 +55,7 @@ rdnreplay <runid> <major> <file> words=<N> reps=<R> [crumb=<path>] [stop=<k>]
 
 ## 6. codex 교차검토 (코딩 전, 한 호출 = 한 주장·국지적)
 
-주장: "`rdnreplay` 의 SUBMIT2 호출은 라이브러리 `triSubmit` 의 copyin 경로와 같은 계약(구조체 필드·ioctl·제출마다 open/close·시드 규칙)이고, `caps.winStart` 가 스트림의 COLOROFFSET 과 같으면 재배치 없이 그 워드 그대로 보내도 된다."  codex 에 물을 것: `OSRDNMesaTri.c:377-404`·`:883-938`, `OSRDNDisplay.m:1124-1178`, `osrdn_r7b.h`, `rdnr7dev.c:580-612` 에서 이 주장을 깨는 전제(버퍼 정렬·페이지·held fd·open 모드·시드·nwords 상한·`words` 의 의미)가 있는가.
+주장: "`rdnreplay` 의 SUBMIT2 호출은 라이브러리 `triSubmit` 의 copyin 경로와 같은 계약(구조체 필드·ioctl·제출마다 open/close·시드 규칙)이고, `caps.winStart` 가 스트림의 COLOROFFSET 과 같으면 재배치 없이 그 워드 그대로 보내도 된다."  codex 에 물을 것: `OSRDNMesaTri.c:377-404`·`:883-938`, `OSRDNDisplay.m:1159-1213`, `osrdn_r7b.h`, `rdnr7dev.c:580-612` 에서 이 주장을 깨는 전제(버퍼 정렬·페이지·held fd·open 모드·시드·nwords 상한·`words` 의 의미)가 있는가.
 
 ### 6-1. codex 판정표 (2026-09-28, GPT-6-Astra 한 호출; 전부 원문을 열어 확인)
 
@@ -65,9 +65,9 @@ rdnreplay <runid> <major> <file> words=<N> reps=<R> [crumb=<path>] [stop=<k>]
 | C2 | CAPS 용 fd 를 쥔 채 반복 open 을 하면 거절된다(gate C) | `rdnr7dev.c:620-626` "a second open while this one holds the node. It must be refused" | ✅ 채택 — §2-3 CAPS fd 닫기 |
 | C3 | `runid + k` 는 다음 호출의 runid 와 겹칠 수 있다; 라이브러리는 `triSeed++` 로 0 도 피한다 | `osrdn_r7b.h:58`, `OSRDNMesaTri.c:905-907`, `osrdn_cp.m:1220`·`:1230`(lastSeed 는 커널에 남는다) | ✅ 채택 — 시드 식 교체 |
 | C4 | ioctl 반환값 검사를 복사해야(비0 이면 회신 무효) | `OSRDNMesaTri.c:922-929`·`:969-972`, `osrdn_r7b.h:15-16` | ✅ 채택 |
-| C5 | winStart 외에 `nodev` 전제(`rdnR7bVirt`·창 고정·record·MMIO) | `OSRDNDisplay.m:1147-1148` | ✅ 채택 — §2-1 문구 |
-| C6 | malloc 버퍼·mmap 생략을 깨는 조건 없음(`words` 는 클라이언트 캐시 메모리, copyin) | `osrdn_r7b.h:92`, `OSRDNDisplay.m:1171-1172` | ✅ 사실 |
-| C7 | 토큰은 커널이 만든다(스트림에 부팅 값 없음); `NODE_RDWR` 정의는 범위 밖 | `OSRDNDisplay.m:1165`; `OSRDNMesaTri.c:42` = 2 = `O_RDWR`(내가 열어 확인) | ✅ 사실 |
+| C5 | winStart 외에 `nodev` 전제(`rdnR7bVirt`·창 고정·record·MMIO) | `OSRDNDisplay.m:1182-1183` | ✅ 채택 — §2-1 문구 |
+| C6 | malloc 버퍼·mmap 생략을 깨는 조건 없음(`words` 는 클라이언트 캐시 메모리, copyin) | `osrdn_r7b.h:92`, `OSRDNDisplay.m:1206-1207` | ✅ 사실 |
+| C7 | 토큰은 커널이 만든다(스트림에 부팅 값 없음); `NODE_RDWR` 정의는 범위 밖 | `OSRDNDisplay.m:1200`; `OSRDNMesaTri.c:42` = 2 = `O_RDWR`(내가 열어 확인) | ✅ 사실 |
 
 ## 7. 구현과 호스트 게이트 (2026-09-28)
 

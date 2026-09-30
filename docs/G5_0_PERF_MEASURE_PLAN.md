@@ -55,7 +55,7 @@ Mesa 3.4.2 의 사실(연 것): 즉시 모드 VB 는 최대 216 정점(`config.h
 - shim 의 빈 함수 두 개를 채운다(`osrdn-mga-shim.h:152-164`): `OSMGAMesaHookSubmitStats` ← SUBMIT2 수·us·워드, `OSMGAMesaHookBracketStats` ← bracket 수·us.  포트(`gl_vidsdl.c:356-357`)는 손대지 않는다 — 이미 그 값을 찍고 있다.
 
 ### 2-4. 커널 쪽 내역 (기존 knob, 드라이버 변경 없음)
-- `r5op.sh time 1` → 실행 → `r5op.sh tdump`: `RDN-R5 tstage … pre= s1ring= s1read= s2asm= s2ring= flush= tail= fence= wait= put=`(`osrdn_modelog.m:346-357`).  M2c 의 계기가 SUBMIT2 경로에서 도는지: `osrdn_cp.m:3166-3169` (`c->timeOn` → `tOn`), `cpTimeSet` `:2981-2990`, 도구 op 이름 `rdnr5cp.m:51-58`.  **한 실행에서 켜고, 한 실행에서 끄고** 둘 다 잰다(계기 자체 비용 = 시계 17 회/제출, M2c).
+- `r5op.sh time 1` → 실행 → `r5op.sh tdump`: `RDN-R5 tstage … pre= s1ring= s1read= s2asm= s2ring= flush= tail= fence= wait= put=`(`osrdn_modelog.m:348-359`).  M2c 의 계기가 SUBMIT2 경로에서 도는지: `osrdn_cp.m:3166-3169` (`c->timeOn` → `tOn`), `cpTimeSet` `:2981-2990`, 도구 op 이름 `rdnr5cp.m:51-58`.  **한 실행에서 켜고, 한 실행에서 끄고** 둘 다 잰다(계기 자체 비용 = 시계 17 회/제출, M2c).
 - 이 계기는 M2c 부터 여러 부팅에서 돌았다 — 정지 위험 없음.
 
 ## 3. 실행 (사용자 gcdsd 불필요: 자가 실행은 오프스크린이 아니라 창을 띄운다 → **사용자 gcdsd 필요**, 화면 실행 ≈ 2 분 규칙)

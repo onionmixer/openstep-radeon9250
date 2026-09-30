@@ -63,7 +63,7 @@ static int              simLogCalls;
 static unsigned long    sleepCallsNoSleep;
 static unsigned long    delayCalls, delayUs;
 /* the framebuffer: counted, not stored (1.9 MB would be pointless here) */
-static unsigned long    fbWrites, fbLow, fbHigh, fbSum, fbMisaligned;
+static unsigned long    fbWrites, fbLow, fbHigh, fbSum, fbMisaligned, fbNonzero;
 static int              simStickyAtomic;   /* 1: the atomic-update bit never clears */
 static unsigned long    simDelayPermille = 1000;   /* how long a delay really takes, per
                                               thousand of what was asked: this machine's
@@ -178,8 +178,9 @@ rdnMmioWrite32(vm_address_t base, unsigned int offset, unsigned long value)
         if (simXferHookRevert)
             osrdn_mode_revert(m, SIM_MMIO_BASE);
     }
-    if (base == SIM_FB_BASE) {                  /* the test pattern */
+    if (base == SIM_FB_BASE) {                  /* the blackening (REL3; was the test pattern) */
         fbWrites++;
+        if (value != 0) fbNonzero++;
         if (fbWrites == 1 || offset < fbLow) fbLow = offset;
         if (offset > fbHigh) fbHigh = offset;
         if (offset & 3UL) fbMisaligned++;
@@ -686,7 +687,7 @@ _start(void)
         vgaSave(&beforeVga);
         modeInit(&mode);
         writeCount = 0;
-        fbWrites = fbSum = fbHigh = 0;
+        fbWrites = fbSum = fbHigh = fbNonzero = 0;
         simLogCalls = 0;
 
         entered = osrdn_mode_enter(&mode, SIM_MMIO_BASE, SIM_FB_BASE);
@@ -730,11 +731,12 @@ _start(void)
             mmio[0x022c / 4] != simxRes[SIMX_RES_DEFAULT].pitch) {
             printf("  FAIL %s: CRTC words not the oracle's\n", boots[b].name); bad++;
         }
-        /* the test pattern covered the framebuffer exactly once */
+        /* black covered the framebuffer exactly once (REL3 3-1) */
         if (fbWrites != simxRes[SIMX_RES_DEFAULT].w * simxRes[SIMX_RES_DEFAULT].h ||
-            fbHigh != simxRes[SIMX_RES_DEFAULT].w * 4UL * simxRes[SIMX_RES_DEFAULT].h - 4UL) {
-            printf("  FAIL %s: pattern wrote %lu stores, highest offset %lu\n",
-                   boots[b].name, fbWrites, fbHigh); bad++;
+            fbHigh != simxRes[SIMX_RES_DEFAULT].w * 4UL * simxRes[SIMX_RES_DEFAULT].h - 4UL ||
+            fbNonzero != 0) {
+            printf("  FAIL %s: blackening wrote %lu stores, highest offset %lu, %lu not zero\n",
+                   boots[b].name, fbWrites, fbHigh, fbNonzero); bad++;
         }
         /* nothing logged between the snapshot and here (12-9) */
         if (simLogCalls != 0) {
@@ -774,7 +776,7 @@ _start(void)
             bad++;
         }
         printf("  %-4s %s: enter and revert return the boot state (refdiv %lu, div3 %08lx, "
-               "%lu pattern stores)\n", bad ? "FAIL" : "ok", boots[b].name,
+               "%lu black stores)\n", bad ? "FAIL" : "ok", boots[b].name,
                mode.refdiv, mode.div3, fbWrites);
     }
 
@@ -989,14 +991,15 @@ _start(void)
         seed(&boots[1]);
         modeInit(&mode);
         (void)osrdn_mode_enter(&mode, SIM_MMIO_BASE, SIM_FB_BASE);
+        /* REL3 3-1: step 13's two-second look is gone, and with it wShow */
         if (mode.wAtomicW.evals == 0 || mode.wAtomicR.evals == 0 || mode.wSettle.evals == 0 ||
-            mode.wShow.evals == 0 || mode.atomicReadSkipped) {
-            printf("  FAIL waits: entry evals aw=%lu ar=%lu ps=%lu sh=%lu skipped=%d\n",
+            mode.atomicReadSkipped) {
+            printf("  FAIL waits: entry evals aw=%lu ar=%lu ps=%lu skipped=%d\n",
                    mode.wAtomicW.evals, mode.wAtomicR.evals, mode.wSettle.evals,
-                   mode.wShow.evals, mode.atomicReadSkipped);
+                   mode.atomicReadSkipped);
             bad++;
         }
-        if (mode.wAtomicW.limit || mode.wAtomicR.limit || mode.wSettle.limit || mode.wShow.limit) {
+        if (mode.wAtomicW.limit || mode.wAtomicR.limit || mode.wSettle.limit) {
             printf("  FAIL waits: an entry wait hit its limit\n");
             bad++;
         }
@@ -1013,9 +1016,9 @@ _start(void)
             printf("  FAIL waits: a revert wait hit its limit\n");
             bad++;
         }
-        printf("  %-4s every wait ran (entry %lu/%lu/%lu/%lu, revert %lu/%lu/%lu/%lu) and none "
+        printf("  %-4s every wait ran (entry %lu/%lu/%lu, revert %lu/%lu/%lu/%lu) and none "
                "hit a limit\n", bad ? "FAIL" : "ok",
-               mode.wAtomicW.evals, mode.wAtomicR.evals, mode.wSettle.evals, mode.wShow.evals,
+               mode.wAtomicW.evals, mode.wAtomicR.evals, mode.wSettle.evals,
                mode.wRevAtomicW.evals, mode.wRevAtomicR.evals, mode.wRevSettle.evals,
                mode.wRevSlot.evals);
     }
@@ -1041,7 +1044,8 @@ _start(void)
             modeInit(&mode);
             mode.res = r;
             mode.fmt = f;
-            fbWrites = fbSum = fbHigh = fbLow = fbMisaligned = 0;
+            mode.hsyncAdj = SIMX_HADJ_DEFAULT;      /* what the class sets with no key (REL3) */
+            fbWrites = fbSum = fbHigh = fbLow = fbMisaligned = fbNonzero = 0;
             entered = osrdn_mode_enter(&mode, SIM_MMIO_BASE, SIM_FB_BASE);
             if (want == 0 || !entered) {
                 printf("  FAIL combo %s %lux%lu fmt %d: entered=%d why=%d step=%d bad=%d lut=%d at %d\n",
@@ -1050,7 +1054,7 @@ _start(void)
                 rbad++;
                 continue;
             }
-            if (mmio[0x0200 / 4] != simxRes[r].hTot || mmio[0x0204 / 4] != simxRes[r].hSync ||
+            if (mmio[0x0200 / 4] != simxRes[r].hTot || mmio[0x0204 / 4] != simxHwordDefault[r] ||
                 mmio[0x0208 / 4] != simxRes[r].vTot || mmio[0x020c / 4] != simxRes[r].vSync ||
                 mmio[0x022c / 4] != simxRes[r].pitch) {
                 printf("  FAIL combo %lux%lu fmt %d: CRTC words\n", simxRes[r].w, simxRes[r].h, f);
@@ -1079,10 +1083,9 @@ _start(void)
                 rbad++;
             }
             if (fbWrites != simxRes[r].h * (simxRes[r].w / per) || fbLow != 0 ||
-                fbHigh != memSize - 4UL || fbMisaligned != 0 || fbSum != simxPatSum[r][f]) {
-                printf("  FAIL combo %lux%lu fmt %d: pattern %lu writes, %lu..%lu, %lu misaligned, sum %08lx want %08lx\n",
-                       simxRes[r].w, simxRes[r].h, f, fbWrites, fbLow, fbHigh, fbMisaligned, fbSum,
-                       simxPatSum[r][f]);
+                fbHigh != memSize - 4UL || fbMisaligned != 0 || fbNonzero != 0) {
+                printf("  FAIL combo %lux%lu fmt %d: black %lu writes, %lu..%lu, %lu misaligned, %lu not zero\n",
+                       simxRes[r].w, simxRes[r].h, f, fbWrites, fbLow, fbHigh, fbMisaligned, fbNonzero);
                 rbad++;
             }
             for (k = 0; k < OSRDN_SNAP_PALETTE; k++)
@@ -1109,6 +1112,86 @@ _start(void)
         bad += rbad;
         printf("  %-4s %d resolution x format entries on both boots match the oracle and revert\n",
                rbad ? "FAIL" : "ok", combos);
+    }
+
+    /* ---- REL3 (docs/REL3_DISPLAY_FIX_PLAN.md 3-2): the sync adjustment ---- *
+     * Every resolution x every case of sim_r2b.py's HSYNC_ADJ_CASES, at the
+     * entry and as a live move; the words are the python oracle's. */
+    {
+        static osrdn_mode_state mode;
+        int                     r, c, entered, rc, hbad = 0, cases = 0;
+        unsigned long           word, got, before0204;
+
+        for (r = 0; r < SIMX_RES; r++)
+        for (c = 0; c < SIMX_HADJ; c++) {
+            seed(&boots[1]);
+            modeInit(&mode);
+            mode.res = r;
+            mode.hsyncAdj = simxHadj[c];
+            entered = osrdn_mode_enter(&mode, SIM_MMIO_BASE, SIM_FB_BASE);
+            if (!entered || mmio[0x0204 / 4] != simxHword[r][c] || mode.hsyncRefused != simxHref[r][c]) {
+                printf("  FAIL hsync entry %lux%lu adj %ld: entered=%d why=%d word %08lx want %08lx refused %d want %d\n",
+                       simxRes[r].w, simxRes[r].h, simxHadj[c], entered, mode.why, mmio[0x0204 / 4],
+                       simxHword[r][c], mode.hsyncRefused, simxHref[r][c]);
+                hbad++;
+                continue;
+            }
+            /* the live move from the default: the same word, or nothing written */
+            mode.hsyncAdj = 0;
+            mode.hsyncRefused = 0;
+            (void)osrdn_mode_hsync(&mode, SIM_MMIO_BASE, 0L, &word, &got);
+            before0204 = mmio[0x0204 / 4];
+            rc = osrdn_mode_hsync(&mode, SIM_MMIO_BASE, simxHadj[c], &word, &got);
+            if (simxHref[r][c]
+                    ? (rc != MODE_HSYNC_RANGE || mmio[0x0204 / 4] != before0204 || mode.hsyncAdj != 0)
+                    : (rc != MODE_HSYNC_SET || mmio[0x0204 / 4] != simxHword[r][c] ||
+                       got != simxHword[r][c] || mode.hsyncAdj != simxHadj[c])) {
+                printf("  FAIL hsync live %lux%lu adj %ld: rc=%d word %08lx want %08lx kept %ld\n",
+                       simxRes[r].w, simxRes[r].h, simxHadj[c], rc, mmio[0x0204 / 4], simxHword[r][c],
+                       mode.hsyncAdj);
+                hbad++;
+            }
+            /* the revert puts back the console's word, whatever was moved */
+            osrdn_mode_revert(&mode, SIM_MMIO_BASE);
+            if (mmio[0x0204 / 4] != mode.snap.mmio[SNAP_CRTC_H_SYNC]) {
+                printf("  FAIL hsync revert %lux%lu adj %ld: %08lx\n", simxRes[r].w, simxRes[r].h,
+                       simxHadj[c], mmio[0x0204 / 4]);
+                hbad++;
+            }
+            /* a live move with no mode of ours on the card writes nothing */
+            before0204 = mmio[0x0204 / 4];
+            rc = osrdn_mode_hsync(&mode, SIM_MMIO_BASE, simxHadj[c], &word, &got);
+            if (rc != MODE_HSYNC_NOT_LIVE || mmio[0x0204 / 4] != before0204) {
+                printf("  FAIL hsync not-live %lux%lu adj %ld: rc=%d\n", simxRes[r].w, simxRes[r].h,
+                       simxHadj[c], rc);
+                hbad++;
+            }
+            cases++;
+        }
+        /* a held claim refuses, writes nothing, and keeps the adjustment */
+        seed(&boots[1]);
+        modeInit(&mode);
+        mode.hsyncAdj = SIMX_HADJ_DEFAULT;
+        (void)osrdn_mode_enter(&mode, SIM_MMIO_BASE, SIM_FB_BASE);
+        before0204 = mmio[0x0204 / 4];
+        mode.inSequence = 1;
+        rc = osrdn_mode_hsync(&mode, SIM_MMIO_BASE, 0L, &word, &got);
+        mode.inSequence = 0;
+        if (rc != MODE_HSYNC_BUSY || mmio[0x0204 / 4] != before0204 || mode.hsyncAdj != SIMX_HADJ_DEFAULT) {
+            printf("  FAIL hsync busy: rc=%d\n", rc);
+            hbad++;
+        }
+        /* a move is kept by the next entry: the cycle comes back to the moved word */
+        rc = osrdn_mode_hsync(&mode, SIM_MMIO_BASE, 0L, &word, &got);
+        (void)osrdn_mode_cycle(&mode, SIM_MMIO_BASE, SIM_FB_BASE);
+        if (rc != MODE_HSYNC_SET || mmio[0x0204 / 4] != simxRes[SIMX_RES_DEFAULT].hSync || mode.hsyncAdj != 0) {
+            printf("  FAIL hsync kept: rc=%d word %08lx\n", rc, mmio[0x0204 / 4]);
+            hbad++;
+        }
+        osrdn_mode_revert(&mode, SIM_MMIO_BASE);
+        bad += hbad;
+        printf("  %-4s %d sync adjustments: entry, live move, revert and refusals match the oracle\n",
+               hbad ? "FAIL" : "ok", cases);
     }
 
     /* ---- R3b-2: a boot divider the chosen resolution has no row for ------ *
