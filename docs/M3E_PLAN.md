@@ -30,7 +30,7 @@ depth 1, 64 × 64, 고정 워드 46 개가 표와 일치 — python 대조).  �
 
 - `OSRDNDisplay.m` r7bSubmit: 카드 위 실패(`live` 가 RAN·REFUSED·BUSY·NOT_LIVE 가 아닌 것)가
   **처음** 났을 때 `rdnCpCopy` 를 정적 사본에 복사하고 제출 번호를 적어 둔다.  이후 덮지 않는다.
-- CP op 경로: RECORD 가 걸쇠 때문에 거절된 뒤(하드웨어는 읽지 않는다 — `osrdn_cp.m:4181`, R5d 7 그대로),
+- CP op 경로: RECORD 가 걸쇠 때문에 거절된 뒤(하드웨어는 읽지 않는다 — `osrdn_cp.m:4196`, R5d 7 그대로),
   사본이 있으면 머리줄 하나(`RDN-R5 kept boot= subs=`)와 함께 사본을 `osrdn_cp_lines` 로 **다시 출력**.
   메모리만 읽는다.
 - 실행이 끝나 조용해진 뒤 `r5op.sh record` 한 번 → 기록이 온전히 남는다.
@@ -52,7 +52,7 @@ depth 1, 64 × 64, 고정 워드 46 개가 표와 일치 — python 대조).  �
 
 사본 크기: `plane` 4 × 256 워드 등으로 약 4.6 KB 이상(python) — 이미 있는 정적 `rdnCpCopy` 와 같은 크기, 스택이 아니라 정적.
 
-거절된 RECORD 의 모양: `osrdn_cp_run` 은 `c->rc = CP_RC_REFUSED`(`osrdn_cp.m:4112`)로 시작하고 걸쇠면 `why = CP_WHY_LATCHED` 로 끝난다.  `osrdn_mode_cp` 는 RECORD 를 NOT_LIVE 검사에서 뺀다(`osrdn_mode.m:1456`).  그래서 조건 `live == CP_RC_REFUSED && rdnCpCopy.why == CP_WHY_LATCHED` 가 성립한다.
+거절된 RECORD 의 모양: `osrdn_cp_run` 은 `c->rc = CP_RC_REFUSED`(`osrdn_cp.m:4127`)로 시작하고 걸쇠면 `why = CP_WHY_LATCHED` 로 끝난다.  `osrdn_mode_cp` 는 RECORD 를 NOT_LIVE 검사에서 뺀다(`osrdn_mode.m:1456`).  그래서 조건 `live == CP_RC_REFUSED && rdnCpCopy.why == CP_WHY_LATCHED` 가 성립한다.
 
 ## 5. 구현·검증 (이 부팅, CP 걸쇠 상태에서)
 

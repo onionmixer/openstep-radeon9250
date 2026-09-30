@@ -26,7 +26,7 @@
 | H-B | Mesa 파이프라인 실행(RenderStart→Finish 묶음) 횟수가 많고 실행당 고정비가 크다 | 프레임당 bracket 수 수백, bracket 안 시간 ≫ 삼각형 훅 시간 합 |
 | H-C | 우리 삼각형 훅(분류·정점 변환·묶음 적재) 이 삼각형당 ≥ 5 us | 훅 안 사이클 합 / 삼각형 |
 | H-D | 나머지(Quake 논리 + Mesa T&L: 우리 훅 밖, bracket 밖)가 ≥ 50 % | 벽시계 − (위의 전부) |
-| H-E | present 행 480 회 + clear 가 ≥ 15 % | present us 합 (G3 실측 600 행 18.9 ms `G3_PRESENT_PLAN.md:138`; SDL 자체 실측 행당 커널 진입 7.21 us `SDL_openstepvideo.m:2549-2593`) |
+| H-E | present 행 480 회 + clear 가 ≥ 15 % | present us 합 (G3 실측 600 행 18.9 ms `G3_PRESENT_PLAN.md:138`; SDL 자체 실측 행당 커널 진입 7.21 us `SDL_openstepvideo.m:2594-2638`) |
 
 Mesa 3.4.2 의 사실(연 것): 즉시 모드 VB 는 최대 216 정점(`config.h:179-194`), `glBindTexture` 는 `ASSERT_OUTSIDE_BEGIN_END_AND_FLUSH` 로 VB 를 비운다(`texobj.c:520-533`, `FLUSH_VB` 정의 `types.h:2064-2069`).  GLQuake 는 표면마다 텍스처·라이트맵을 바꾸므로 파이프라인 실행이 표면 수만큼 일어날 수 있다 — H-B 의 근거.  RenderStart/Finish 는 래스터 단계 앞뒤(`vbrender.c:699-729`)라 **T&L(변환·클립·투영)은 bracket 밖**에 있다.
 
@@ -45,7 +45,7 @@ Mesa 3.4.2 의 사실(연 것): 즉시 모드 VB 는 최대 216 정점(`config.h
 | bracket | `:1349`(`osrdnHookRenderStart`) → `:1429`(`osrdnHookRenderFinish`) | 수, 안 사이클 합; bracket 당 삼각형 |
 | 호스트 검증 | `OSRDNMesaTri.c:1631-1646` (`osrdn_tri_batch_verify` → `osrdn_r7_verify`) | 수, 사이클 합 |
 | SUBMIT2 ioctl | `OSRDNMesaTri.c:864-964` (`triSubmit`, ioctl `:936`) | 수, 사이클 합·최대, 워드 합 |
-| present 행 | `OSRDNMesaPresent.c:375` | 수, 사이클 합; **프레임 경계** = `dstY` 가 직전보다 커지는 호출(SDL 은 행을 역순으로 찍는다 `SDL_openstepvideo.m:2578-2583`) |
+| present 행 | `OSRDNMesaPresent.c:375` | 수, 사이클 합; **프레임 경계** = `dstY` 가 직전보다 커지는 호출(SDL 은 행을 역순으로 찍는다 `SDL_openstepvideo.m:2623-2628`) |
 | clear | `OSRDNMesaDepth.c:129` | 수, 사이클 합 |
 | 텍스처 업로드 | `OSRDNMesaTex.c:87`(`osrdn_tex_upload_level`, 잎) — `:68-77` 의 `_at` 은 이것을 부르고, 훅은 `OSRDNMesaHook.c:362`·`:370` 에서 둘 다 부른다 | 수, 사이클 합, 바이트, 꼬리표 |
 | 벽 | 첫 bracket 시각 → 보고 시각 | 전체 us; 프레임 수(present 경계 수, clear 수 둘 다 기록해 대조) |

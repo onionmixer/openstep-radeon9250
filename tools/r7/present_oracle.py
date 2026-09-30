@@ -4,6 +4,9 @@ and NOT from osrdn_cp.m (docs/G3_PRESENT_PLAN.md 2-4).
 
 radeon_cp_dispatch_swap (FreeBSD radeon_state.c 1343-1400) per box:
     WAIT_UNTIL_3D_IDLE                       -> PACKET0(WAIT_UNTIL,0), 3D_IDLECLEAN|HOST_IDLECLEAN
+    PACKET0(DEFAULT_SC_BOTTOM_RIGHT,0), RIGHT_MAX|BOTTOM_MAX   } REL2 (docs/REL2_PRESENT_STATE_PLAN.md):
+    PACKET0(DP_WRITE_MASK,0), 0xffffffff                     } the 2D state the swap leaves to the X
+    PACKET0(DP_CNTL,0), X_LEFT_TO_RIGHT|Y_TOP_TO_BOTTOM      } server (xf86-video-ati radeon_exa_funcs.c 107-114)
     PACKET0(DP_GUI_MASTER_CNTL,0), gmc
     PACKET0(SRC_PITCH_OFFSET,1), src, dst    (pitch_bytes/64 << 22 | card_addr >> 10, radeon_cp.c 1315-1317)
     PACKET0(SRC_X_Y,2), x<<16|y, x<<16|y, w<<16|h
@@ -11,7 +14,7 @@ radeon_cp_dispatch_swap (FreeBSD radeon_state.c 1343-1400) per box:
 The bits are radeon_reg.h 683-737 (GMC), 1715-1719 (WAIT), 1891 (CP_PACKET0); the
 registers 683, 784, 792, 797, 1580, 1585, 1705.
 
-  present_oracle.py            prints the 13 words for the demo's frame and a self-check
+  present_oracle.py            prints the 19 words for the demo's frame and a self-check
 """
 import sys
 
@@ -53,6 +56,9 @@ def pitch_offset(pitch_bytes, card_addr):
 def words(src_card, src_stride_px, src_x, src_y, w, h, dst_x, dst_y, screen_pitch_bytes):
     return [
         packet0(WAIT_UNTIL, 0), WAIT_3D_IDLECLEAN | WAIT_HOST_IDLECLEAN,
+        packet0(DEFAULT_SC_BOTTOM_RIGHT, 0), DEFAULT_SC_RIGHT_MAX | DEFAULT_SC_BOTTOM_MAX,
+        packet0(DP_WRITE_MASK, 0), 0xffffffff,
+        packet0(DP_CNTL, 0), DST_X_LEFT_TO_RIGHT | DST_Y_TOP_TO_BOTTOM,
         packet0(DP_GUI_MASTER_CNTL, 0), GMC,
         packet0(SRC_PITCH_OFFSET, 1), pitch_offset(src_stride_px * 4, src_card), pitch_offset(screen_pitch_bytes, 0),
         packet0(SRC_X_Y, 2), (src_x << 16) | src_y, (dst_x << 16) | dst_y, (w << 16) | h,
@@ -70,6 +76,7 @@ DP_WRITE_MASK = 0x16cc
 DEFAULT_SC_BOTTOM_RIGHT, DP_BRUSH_FRGD_CLR, DP_BRUSH_BKGD_CLR = 0x16e8, 0x147c, 0x1478
 DP_SRC_FRGD_CLR, DP_SRC_BKGD_CLR, DP_CNTL, DST_Y_X, DST_HEIGHT_WIDTH = 0x15d8, 0x15dc, 0x16c0, 0x1438, 0x143c
 DST_X_LEFT_TO_RIGHT, DST_Y_TOP_TO_BOTTOM = 1 << 0, 1 << 1
+DEFAULT_SC_RIGHT_MAX, DEFAULT_SC_BOTTOM_MAX = 0x1fff << 0, 0x1fff << 16    # radeon_reg.h 643-645
 GMC_BRUSH_SOLID_COLOR = 13 << 4
 ROP3_P = 0x00f00000
 GMC_CLEAR = (GMC_DST_PITCH_OFFSET_CNTL | GMC_BRUSH_SOLID_COLOR | GMC_DST_32BPP |
@@ -167,7 +174,9 @@ def self_check():
     assert pitch_offset(4096, 0) == (64 << 22)
     assert pitch_offset(800 * 4, 0x400000) == ((50 << 22) | 0x1000)
     w = words(0x400000, 800, 0, 599, 800, 1, 0, 0, 4096)
-    assert len(w) == 13 and w[8] == 599 and w[10] == (800 << 16) | 1
+    assert len(w) == 19 and w[14] == 599 and w[16] == (800 << 16) | 1
+    # REL2: the three state pairs, right after the first WAIT, with the clear's values
+    assert w[2:8] == [0x000005ba, 0x1fff1fff, 0x000005b3, 0xffffffff, 0x000005b0, 3], [hex(x) for x in w[2:8]]
     return True
 
 

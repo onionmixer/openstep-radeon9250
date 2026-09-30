@@ -1,6 +1,6 @@
 #!/bin/bash
 # Turn the collected .pkg tars into the release assets, on the HOST.
-#   bash .../pkg/make-release-assets.sh [version]
+#   bash .../pkg/make-release-assets.sh [version] [library-version, default = version]
 # The target side is pkg/collect-release-pkgs.sh.  The names follow
 # openstep-matrox-remade's: OpenStep-<product>-<version>-i486-<part>.pkg.tar.gz,
 # and the Demos variant keeps the MESA port's version with the variant
@@ -9,12 +9,14 @@ set -euo pipefail
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 version="${1:-1.0}"
+# the library can stay at an earlier release than the driver (1.1 ships the 1.0 library)
+accel_version="${2:-$version}"
 src="$root/build/release-pkgs"
 dest="$root/release-assets"
 
 declare -A NAMES=(
   [OSRDNDisplay]="OpenStep-Radeon9250-${version}-i486-Display"
-  [OSRDNMesaAccel]="OpenStep-Radeon9250-${version}-i486-MesaAccel"
+  [OSRDNMesaAccel]="OpenStep-Radeon9250-${accel_version}-i486-MesaAccel"
   [OpenStepMesa342DemosRDN]="OpenStep-Mesa-3.4.2-openstep.1-rdn.1-i486-Demos"
 )
 

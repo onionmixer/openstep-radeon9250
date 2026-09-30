@@ -1449,7 +1449,7 @@ cpStop(osrdn_cp_state *c, vm_address_t base)
 #define C_PRESENT_GMC           0x52cc36f3UL
 #define C_PRESENT_WAIT_PRE      0x00060000UL    /* 3D_IDLECLEAN | HOST_IDLECLEAN (radeon_drv.h 1914-1922) */
 #define C_PRESENT_WAIT_POST     0x00050000UL    /* 2D_IDLECLEAN | HOST_IDLECLEAN (radeon_drv.h 1906-1913) */
-#define C_PRESENT_WORDS         13
+#define C_PRESENT_WORDS         19      /* REL2: + scissor, write mask, direction -- the EXA copy's own state */
 #define C_PRESENT_MAX_DIM       0xffffUL        /* the packed x/y and w/h fields are 16 bits */
 #define C_PRESENT_MAX_STRIDE    0x8000UL        /* Matrox's bound: keeps every product below overflowing */
 
@@ -3870,8 +3870,20 @@ osrdn_cp_stage(osrdn_cp_state *c, unsigned long op, unsigned long token,
  *
  * The kernel's own blit of one rectangle of the client's surface onto the
  * screen: gates in the Matrox driver's order (OpenStepMGAReplacementDisplay.m
- * 6360-6500), then the reference's thirteen words down the ordinary ring
- * (cpR6Submit pads to 16 and waits twice, as for everything else).  Nothing of
+ * 6360-6500), then the reference's words down the ordinary ring (cpR6Submit
+ * pads to a multiple of 16 and waits twice, as for everything else).
+ *
+ * REL2 (docs/REL2_PRESENT_STATE_PLAN.md): nineteen words, not the DRM swap's
+ * thirteen.  The swap leans on 2D state the X server left behind -- the default
+ * scissor, the write mask, the direction -- and the X driver writes them again
+ * after DRM_RADEON_CP_INIT "does an engine reset, which resets some engine
+ * registers back to their default values" (xf86-video-ati radeon_dri.c
+ * 1219-1221); its EXA copy writes all three before every copy (radeon_exa_funcs.c
+ * 107-114).  There is no X server here, and the CP's own start resets the
+ * engine: a client that never cleared on the card presented into a zero
+ * scissor and nothing reached the screen (GLQuake stuck on its loading console
+ * after every boot, 2026-09-30).  So the blit carries the three itself, with
+ * the clear's values (cpClear below).  Nothing of
  * the client's is a packet here, so the verifier has nothing to look at -- the
  * same trust boundary as cpZclear's own words.  The screen is card address 0
  * (CRTC_OFFSET 0) and the window is [winStart, winEnd); srcOrg is an offset
@@ -3930,6 +3942,9 @@ cpPresent(osrdn_cp_state *c, vm_address_t base)
     srcPO = ((rowBytes / 64UL) << 22) | ((c->winStart + b->srcOrg) >> 10);
     dstPO = (q->rowBytes / 64UL) << 22;         /* the screen: card address 0 */
     wd[n++] = C_P0N(C_WAIT_UNTIL, 0);           wd[n++] = C_PRESENT_WAIT_PRE;
+    wd[n++] = C_P0N(C_DEFAULT_SC_BOTTOM_RIGHT, 0); wd[n++] = C_SC_MAX;              /* REL2 */
+    wd[n++] = C_P0N(C_DP_WRITE_MASK, 0);        wd[n++] = 0xffffffffUL;          /* REL2 */
+    wd[n++] = C_P0N(C_DP_CNTL, 0);              wd[n++] = C_DP_CNTL_L2R_T2B;     /* REL2 */
     wd[n++] = C_P0N(C_DP_GUI_MASTER_CNTL, 0);   wd[n++] = C_PRESENT_GMC;
     wd[n++] = C_P0N(C_SRC_PITCH_OFFSET, 1);     wd[n++] = srcPO;    wd[n++] = dstPO;
     wd[n++] = C_P0N(C_SRC_X_Y, 2);              wd[n++] = (b->srcX << 16) | b->srcY;

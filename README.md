@@ -8,10 +8,12 @@ OPENSTEP 4.2(i386)의 **PCI ATI Radeon 9250 (RV280)** 을 위한 새 DriverKit
 [openstep-matrox-remade](https://github.com/onionmixer/openstep-matrox-remade)
 (G450)의 후속이다.
 
-**v1.0 릴리스**: [releases/tag/v1.0](https://github.com/onionmixer/openstep-radeon9250/releases/tag/v1.0)
+**v1.1 릴리스**: [releases/tag/v1.1](https://github.com/onionmixer/openstep-radeon9250/releases/tag/v1.1)
 — 설치용 `.pkg` 세 개와 SHA256SUMS. 설치와 복구 절차는
 [release-packaging/INSTALL.md](release-packaging/INSTALL.md)에 있고,
-내용은 [RELEASE_NOTES_v1.0.md](RELEASE_NOTES_v1.0.md)에 있다.
+내용은 [RELEASE_NOTES_v1.1.md](RELEASE_NOTES_v1.1.md)에 있다.
+**1.0 을 쓰고 있다면 1.1 로 올릴 것** — 1.0 은 부팅 뒤 카드에서 clear 를 한 번도 하지
+않은 GL 프로그램(GLQuake 가 그렇다)이 먼저 뜨면 화면이 로딩 콘솔에서 바뀌지 않았다.
 
 ## 무엇이 되나
 

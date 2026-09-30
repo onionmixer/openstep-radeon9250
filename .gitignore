@@ -1,5 +1,7 @@
 # Internal only: the machine's real address and account details.
 HANDOFF.md
+# The development log moved out of the assistant's memory at the end (2026-09-29).
+HANDOFF_HISTORY.md
 
 # Third-party reference sources.  tools/fetch-ref.sh rebuilds ref/upstream;
 # ref/README.md (committed) says what each item is.

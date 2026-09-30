@@ -2063,28 +2063,34 @@ _start(void)
         EXPECT(C.presentOk == 0 && C.presentRefused[OSRDN_PRESENT_E_SRC] == 4 && C.presentRefused[OSRDN_PRESENT_E_GEOM] == 4,
                "present refusal counters: ok %lu src %lu geom %lu", C.presentOk,
                C.presentRefused[OSRDN_PRESENT_E_SRC], C.presentRefused[OSRDN_PRESENT_E_GEOM]);
-        /* the good one: the reference's thirteen words, then the padding to 16 */
+        /* the good one: the reference's words (G3_PRESENT_WORDS), then the padding to a multiple of 16 */
         b = good;
         rc = run(CP_OP_PRESENT, 0, 0);
         EXPECT(rc == CP_RC_RAN && C.presentVerdict == OSRDN_PRESENT_OK && C.presentOk == 1,
                "present good: rc %d why %d verdict %lu ok %lu", rc, C.why, C.presentVerdict, C.presentOk);
-        EXPECT(capCount == 16, "present good: %lu words reached the ring, want 16", capCount);
-        for (k = 0; k < 13 && k < capCount; k++)
+        EXPECT(capCount == G3_PRESENT_RING, "present good: %lu words reached the ring, want %d", capCount, G3_PRESENT_RING);
+        for (k = 0; k < G3_PRESENT_WORDS && k < capCount; k++)
             EXPECT(capWords[k] == g3PresentWant[k], "present word %lu is %08lx, the reference says %08lx",
                    k, capWords[k], g3PresentWant[k]);
-        for (k = 13; k < capCount; k++)
+        for (k = G3_PRESENT_WORDS; k < capCount; k++)
             EXPECT(capWords[k] == CP_PACKET2, "present padding word %lu is %08lx", k, capWords[k]);
         regs[0] = R(0x146c); regs[1] = R(0x1428); regs[2] = R(0x142c); regs[3] = R(0x1590); regs[4] = R(0x1594); regs[5] = R(0x1598);
-        EXPECT(regs[0] == g3PresentWant[3] && regs[1] == g3PresentWant[5] && regs[2] == g3PresentWant[6] &&
-               regs[3] == g3PresentWant[8] && regs[4] == g3PresentWant[9] && regs[5] == g3PresentWant[10],
+        EXPECT(regs[0] == g3PresentWant[G3_IX_GMC] && regs[1] == g3PresentWant[G3_IX_SRC_PO] &&
+               regs[2] == g3PresentWant[G3_IX_DST_PO] && regs[3] == g3PresentWant[G3_IX_SRC_XY] &&
+               regs[4] == g3PresentWant[G3_IX_DST_XY] && regs[5] == g3PresentWant[G3_IX_WH],
                "present registers after the run: gmc %08lx src %08lx dst %08lx xy %08lx %08lx wh %08lx",
                regs[0], regs[1], regs[2], regs[3], regs[4], regs[5]);
+        /* REL2: the 2D state the blit now carries, as the clear writes it */
+        EXPECT(R(0x16e8) == 0x1fff1fffUL && R(0x16cc) == 0xffffffffUL && R(0x16c0) == 3UL,
+               "present 2D state after the run: scissor %08lx mask %08lx dp_cntl %08lx",
+               R(0x16e8), R(0x16cc), R(0x16c0));
         EXPECT(C.state == CP_ST_RUNNING && !C.failed, "present left the CP running: state %d failed %d", C.state, C.failed);
         /* a second row, as SDL sends them: the next ring words, no state carried in the driver */
         b = good; b.srcY = 598UL; b.dstY = 1UL;
         rc = run(CP_OP_PRESENT, 0, 0);
-        EXPECT(rc == CP_RC_RAN && C.presentOk == 2 && capWords[8] == 598UL && capWords[9] == 1UL,
-               "present second row: rc %d ok %lu xy %08lx %08lx", rc, C.presentOk, capWords[8], capWords[9]);
+        EXPECT(rc == CP_RC_RAN && C.presentOk == 2 && capWords[G3_IX_SRC_XY] == 598UL && capWords[G3_IX_DST_XY] == 1UL,
+               "present second row: rc %d ok %lu xy %08lx %08lx", rc, C.presentOk,
+               capWords[G3_IX_SRC_XY], capWords[G3_IX_DST_XY]);
         /* a failed unit (not latched: the common gates let it through): the present's own gate */
         C.failed = 1;
         b = good;
@@ -2106,7 +2112,7 @@ _start(void)
         simNeverAdvance = 0;
         C.presentReq = 0;
 #undef G3_REFUSED
-        printf("  %-4s G3 present: fifteen refusals by verdict with nothing written, the reference's thirteen words "
+        printf("  %-4s G3 present: fifteen refusals by verdict with nothing written, the reference's words "
                "and PACKET2 padding on the ring, the 2D registers as written, a second row, LATCH after a latch\n",
                bad != pbad ? "FAIL" : "ok");
     }

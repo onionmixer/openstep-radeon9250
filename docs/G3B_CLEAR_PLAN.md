@@ -111,7 +111,7 @@
 
 **참조가 하는 것**: `radeon_state.c:1145` `tempRB3D_ZSTENCILCNTL = depth_clear->rb3d_zstencilcntl` → `:1205` 그대로 기록; 그 값은 `radeon_cp.c:1191-1198` 의 `depth_fmt`(깊이 bpp 16 이면 16 비트 정수)에 `:1213-1221` Z_TEST_ALWAYS·스텐실 ALWAYS/REPLACE·Z_WRITE_ENABLE 을 OR 한 것 — **clear 는 클라이언트의 깊이 형식을 그대로 쓴다.**
 
-**G3c 수정(커널 1 워드, 57 워드 유지, purge 꼬리 없음 — 참조 모양 유지)**: `osrdn_cp.m:1499` `C_CLEAR_ZSTENCIL 0x42227070`(형식 0·Z_TEST_ALWAYS·스텐실 ALWAYS·ops 0x0222·Z_WRITE_ENABLE; python 비트 분해 = 클라이언트 LESS 0x42227010 의 [6:4] 만 7), `osrdn_cp.m:4064` 이 상태 블록의 9 번째 워드를 이 값으로 바꾼다. 오라클 `present_oracle.py` `CLEAR_ZSTENCIL` 은 표의 `OSRDN_TRI_ZSTENCIL_LESS` 에서 같은 식으로 유도해 자체검사; `world5.c` 가짜 3D 는 16 비트 직사각형을 r6Tri 와 같은 하프워드 형태로 쓰고 clear 시험은 **표면 8 KiB 만 값이고 그 뒤는 스크리블 그대로**를 요구; `check_r5_src.py` g3b-clear 규칙에 치환 줄·값(표에서 유도)과 변이 2 개(치환 줄 제거, 24 비트 값).
+**G3c 수정(커널 1 워드, 57 워드 유지, purge 꼬리 없음 — 참조 모양 유지)**: `osrdn_cp.m:1499` `C_CLEAR_ZSTENCIL 0x42227070`(형식 0·Z_TEST_ALWAYS·스텐실 ALWAYS·ops 0x0222·Z_WRITE_ENABLE; python 비트 분해 = 클라이언트 LESS 0x42227010 의 [6:4] 만 7), `osrdn_cp.m:4079` 이 상태 블록의 9 번째 워드를 이 값으로 바꾼다. 오라클 `present_oracle.py` `CLEAR_ZSTENCIL` 은 표의 `OSRDN_TRI_ZSTENCIL_LESS` 에서 같은 식으로 유도해 자체검사; `world5.c` 가짜 3D 는 16 비트 직사각형을 r6Tri 와 같은 하프워드 형태로 쓰고 clear 시험은 **표면 8 KiB 만 값이고 그 뒤는 스크리블 그대로**를 요구; `check_r5_src.py` g3b-clear 규칙에 치환 줄·값(표에서 유도)과 변이 2 개(치환 줄 제거, 24 비트 값).
 
 **첫 가설의 기각**: "2D 채우기 뒤 3D 캐시 purge 누락" — 삼각형 배치 꼬리마다 이미 purge 가 있고(`osrdn_cp.m` cpZclear 꼬리), 참조의 clear 도 purge 없이 끝난다; 위 측정이 형식을 지목해 purge 편집은 되돌렸다.
 
@@ -139,7 +139,7 @@
 - 덤으로: 몸통 화소의 VRAM 바이트가 stock 배열 바이트와 **정확히 같다**(바이트 0 = R) — 제 PNG 변환의 R/B 스왑이 틀렸었고, 훅의 clear 색 워드 `osrdnColourWord`(정점용 R/B 스왑)는 2D 채우기엔 틀린 패킹이다(화소 패킹 `osrdnWantWord` 가 맞다).
 
 **G3d 수정**
-- 커널 `cpClear` 색 블록 = **X 드라이버의 단색 채우기 레지스터 시퀀스**(`radeon_exa_funcs.c:90` `Emit2DState`: DEFAULT_SC_BOTTOM_RIGHT·DP_GUI_MASTER_CNTL·DP_BRUSH_FRGD/BKGD_CLR·DP_SRC_FRGD/BKGD_CLR·DP_WRITE_MASK·**DP_CNTL**(`radeon_exa_funcs.c:114`)·DST_PITCH_OFFSET; `RADEONSolid`: DST_Y_X·DST_HEIGHT_WIDTH `radeon_exa_funcs.c:243`; 주소 `radeon_reg.h:670` 부근) — present 블릿과 같은 PACKET0 형태, 앞뒤 WAIT 3D|HOST / 2D|HOST.  13 쌍 26 워드, 총 **73**.  `osrdn_cp.m:4055`.
+- 커널 `cpClear` 색 블록 = **X 드라이버의 단색 채우기 레지스터 시퀀스**(`radeon_exa_funcs.c:90` `Emit2DState`: DEFAULT_SC_BOTTOM_RIGHT·DP_GUI_MASTER_CNTL·DP_BRUSH_FRGD/BKGD_CLR·DP_SRC_FRGD/BKGD_CLR·DP_WRITE_MASK·**DP_CNTL**(`radeon_exa_funcs.c:114`)·DST_PITCH_OFFSET; `RADEONSolid`: DST_Y_X·DST_HEIGHT_WIDTH `radeon_exa_funcs.c:243`; 주소 `radeon_reg.h:670` 부근) — present 블릿과 같은 PACKET0 형태, 앞뒤 WAIT 3D|HOST / 2D|HOST.  13 쌍 26 워드, 총 **73**.  `osrdn_cp.m:4070`.
 - 라이브러리 `osrdnHookClear`: 색 워드를 `osrdnWantWord`(화소 패킹)로 `OSRDNMesaHook.c:711`; `check_hook.py` 규칙·변이.
 - `present_oracle.py` 새 색 블록·자체검사, `world5.c` 가짜 2D 는 `DST_HEIGHT_WIDTH` 쓰기에서 GMC·DP_CNTL·피치/오프셋·마스크로 칠한다(PAINT_MULTI 모델은 남겨 둠), `check_r5_src.py` g3b-clear 규칙에 PAINT_MULTI 금지·DP_CNTL·h<<16|w·레지스터 값 + 변이 2.
 - 발견한 검사기 결함: G3c 때 `check_r5_src.py` 의 g3b-clear 규칙 안에 `tab = …` 줄들을 else 블록 중간에 넣어 그 뒤 검사(E_MAGIC…·IOLog)가 `if (less & 0xf)` 아래로 들어가 **실행되지 않았다** — 새 변이 2 개가 "caught by []" 로 드러냈다(기억 `checker-discipline`: 안 걸린 것은 미검사).  블록 밖으로 옮겨 복구.

@@ -53,7 +53,7 @@ M2g 는 제출 로그를 기본 끔으로 바꾸면서 **스테이징 실패만*
 
 | 첫 결과 | 다음 제출 | 확인한 곳 |
 |---|---|---|
-| `LATCHED` | `REFUSED`, `why=LATCHED` | `osrdn_cp.m:4187-4188`(`c->latched` → `cpRefuse(c, CP_WHY_LATCHED, 0)`), `osrdn_cp.m:4112`(기본 `REFUSED`) |
+| `LATCHED` | `REFUSED`, `why=LATCHED` | `osrdn_cp.m:4202-4203`(`c->latched` → `cpRefuse(c, CP_WHY_LATCHED, 0)`), `osrdn_cp.m:4127`(기본 `REFUSED`) |
 | `CHECK_FAILED` | `REFUSED`, `why=FAILED` | `osrdn_cp.m:3266-3267`(`c->failed = 1`, codex 는 2738), `osrdn_cp.m:3009-3028`(게이트) |
 | `PRE_TIMEOUT`·`POST` | 클라이언트 경로에선 **나올 수 없다** | 반환하는 곳 전수 grep: `cpMap`(731·736·741·745)·`cpReset`(763·768·796·798)뿐 — ZCLEAR 에는 없다 |
 

@@ -366,3 +366,12 @@ B9 에서 식별 키가 여섯(`Character Major` 추가)이 됐는데, 페이로
 - 두 Display 패키지만 실기에서 다시 만들었다(`build/rel1-repack-6k.sh`, `build/rel1-6k.log`): 두 검증기·BOM 겹침 PASS, radeon reloc 은 여전히 790662775.
 - 옛 패키지와 파일 단위 대조(python, 바깥 tar 와 안쪽 페이로드 전부): radeon 은 `INSTALL.md`·awk·BOM, Matrox 는 awk·BOM 만 다르고 바뀐 파일은 소스와 바이트 동일.  나머지 16 개는 바이트 동일.
 - `/me/packages` 교체(`build/rel1-place4.sh`, 옛 것은 `/usr/local/rel1/superseded-rc3`).  SHA256SUMS 는 두 Display 줄만 바뀌었다.  리허설로 설치된 것과의 차이는 문서 한 개와 awk 주석뿐이라 재설치·재부팅은 하지 않았다.
+
+## 23. 공개 (2026-09-29)
+
+D9 = **판정표만**(사용자).  `docs/review/` 58 개 중 `Q*_verdict.md` 14 개만 공개한다 — 나머지 44 개(원문 로그·프롬프트·회신·`PLAN_en.md`)는 다른 추적 파일 어디서도 참조되지 않는다(참조는 전부 `_verdict`).
+- **radeon**: 첫 공개라 이력 없이 단일 커밋 — 워크스페이스 `openstep-radeon9250` 트리에서 44 개를 뺀 트리로 `git commit-tree`(`publish/openstep-radeon9250` = `7a4d489`, 721 파일).  blob 전수 검사(경로: site.conf·gcds.cnf·HANDOFF·ref/·doc/·.i64·.img·원문 로그류, 내용: 사설 IP·개인 키 머리줄·토큰·메일) 676 blob 0 건.  `onionmixer/openstep-radeon9250` 생성, main·`v1.0` = `7a4d489`, 릴리스 자산 3 + SHA256SUMS.
+- **Mesa 포트**: `f2ab89f`·`a8467f4` 를 origin main 으로 push(태그 없음, D4).
+- **Matrox**: subtree split `6af5e34`(원격 `c5ac4a3` 에서 fast-forward), 2,820 blob 0 건, `v1.4` 릴리스.
+- **Quake**: subtree split `9123d4f`(원격 `67f6240` 에서 fast-forward), 374 blob 0 건, `v1.3` 릴리스(`--target` split SHA, libre 1.0 자산은 1.2 공개본과 sha256 동일).
+- 세 릴리스 모두 자산을 GitHub 에서 다시 받아 `sha256sum -c` 전부 성공, 받은 SHA256SUMS 는 로컬과 바이트 동일.

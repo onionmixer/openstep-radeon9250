@@ -35,8 +35,8 @@ M1q~M1v 다섯 칸이 쫓은 것은 나머지 21 % 쪽이었다.  **큰 덩어�
 ## 3. 그런데 계기의 절반은 **이미 드라이버 안에 있었다**
 
 새로 달기 전에 읽었다.  `osrdn_cp_run` 은 연산 진입에서 `IOGetTimestamp(&t0)` 를 찍고
-끝에서 `c->elapsedUs = cpElapsedUs(t0, t1)` 를 넣는다(`osrdn_cp.m:4098-4106`,
-`osrdn_cp.m:4258-4261`).  그리고 **MMIO 접근을 매크로로 가로채 세고 있다**:
+끝에서 `c->elapsedUs = cpElapsedUs(t0, t1)` 를 넣는다(`osrdn_cp.m:4113-4121`,
+`osrdn_cp.m:4273-4276`).  그리고 **MMIO 접근을 매크로로 가로채 세고 있다**:
 
     static unsigned long cpIoRd, cpIoWr;
     #define rdnMmioRead32(b, o)      (cpIoRd++, rdnMmioRead32((b), (o)))

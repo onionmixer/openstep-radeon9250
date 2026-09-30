@@ -45,9 +45,9 @@ G5-0 §8-2 가 남긴 마지막 큰 덩어리다: 제출마다 CPU 가 **카드�
 | 접촉 | 어떻게 링에 닿나 | 앞 제출과의 순서 |
 |---|---|---|
 | 다음 SUBMIT | `cpR6Submit` → `cpPut` 이 `wptr` 부터 쓴다 | 링의 뒤 |
-| PRESENT | `cpPresent` 가 13 워드를 **같은 `cpR6Submit`** 으로(`osrdn_cp.m:3932-3943`), 첫 워드가 `WAIT_UNTIL 3D_IDLECLEAN|HOST_IDLECLEAN`(`osrdn_cp.m:1450`) | 카드가 **자기 안에서** 앞 그리기 완료·캐시 정리를 기다린 뒤 블릿한다.  참조의 블릿 앞 WAIT 와 같다(`radeon_drv.h` 1914-1922) |
+| PRESENT | `cpPresent` 가 13 워드를 **같은 `cpR6Submit`** 으로(`osrdn_cp.m:3944-3958`), 첫 워드가 `WAIT_UNTIL 3D_IDLECLEAN|HOST_IDLECLEAN`(`osrdn_cp.m:1450`) | 카드가 **자기 안에서** 앞 그리기 완료·캐시 정리를 기다린 뒤 블릿한다.  참조의 블릿 앞 WAIT 와 같다(`radeon_drv.h` 1914-1922) |
 | CLEAR | 같은 `cpR6Submit`, 첫 워드 같은 WAIT | 같음 |
-| STOP·모드 복귀 | `osrdn_cp_quiesce` → `cpStop` 이 **W_RPTR(wptr) → W_IDLE → CSQ off** 를 기다린다(`osrdn_cp.m:4089-4097`) | 복귀 전에 링이 빈다 — **이미 retire 다** |
+| STOP·모드 복귀 | `osrdn_cp_quiesce` → `cpStop` 이 **W_RPTR(wptr) → W_IDLE → CSQ off** 를 기다린다(`osrdn_cp.m:4104-4112`) | 복귀 전에 링이 빈다 — **이미 retire 다** |
 | 문자 장치 마지막 close | `rdnDevClose`(`OSRDNDisplay.m:220-236`): 걸쇠만 푼다, 대기 없음 | §2-5 에서 retire 를 붙인다 |
 
 `cpR6Submit` 은 오늘 **자리 검사가 없다**(진입 게이트 `rptr == wptr` 이 "링이 비었다" 를 보증하므로).  §2-2 가 그 자리에 자리 대기를 넣는다 — 그러면 present/clear/다른 op 는 **코드 변경 없이** 앞 제출 뒤에 줄을 선다.
@@ -272,7 +272,7 @@ G2 가 실패하면(그림이 다르면) 자리·순서 가정이 틀린 것이�
 | Q1-1 참조 `BEGIN_RING` 은 정렬된 4,080 에 4,096 을 예약한다 | `radeon_drv.h:2059` 를 열고 python: `16 − ((0+4080)&15) + 4080 = 4096` — 이미 정렬돼도 16 을 더 붙이는 참조의 과잉 예약 | ⚖️ 사실, 행동 불변 — 우리는 패딩한 길이(4,080)로 묻고 `space > len` 의 1 워드 여유는 유지된다 |
 | Q1-2 cpLatch·cpFail 의 kick 이 자리 확인 없이 16 워드를 쓴다 | `osrdn_cp.m:430-458`(kick), `:466`·`:493`(cpLatchDump 호출) 열었다.  free<16 이면 덮어쓰기 또는 WPTR==RPTR | ✅ 채택 — §2-2 kick 가드.  오늘의 4,080 제출에도 있는 구멍 |
 | Q1-2 cpZclear 의 `cpIdleGate` 가 비행 중 SUBMIT2 를 거절한다 | `osrdn_cp.m:3199`, `:771` 열었다 | ⚖️ 사실, 결론은 "경합 아님·안전한 거절" — §8 에 기록 |
-| Q1-3 RPTR 은 인출 진행이고 엔진 완료가 아니다; present 의 카드 안 WAIT 가 순서를 잡는다 | §1-2 와 같은 결론(`osrdn_cp.m:3932`, 꼬리 `:3496` 의 WAIT_IDLE) | ✅ 반증 안 됨 |
+| Q1-3 RPTR 은 인출 진행이고 엔진 완료가 아니다; present 의 카드 안 WAIT 가 순서를 잡는다 | §1-2 와 같은 결론(`osrdn_cp.m:3944`, 꼬리 `:3496` 의 WAIT_IDLE) | ✅ 반증 안 됨 |
 | Q1-4 도어벨 순서 | `:2398-2411` | ✅ 반증 안 됨 |
 | Q2 표면 창이 Mesa 의 그리기 버퍼라 소프트웨어 경로가 전부 창에 닿는다 | `OSRDNMesaSurface.c:228` `return (void *)surfBase;`, 위임 `OSRDNMesaHook.c:1110-1112` 열었다 | ✅ 채택 — **§1-4 가 틀렸다**.  §2-4 에 비행 표지와 flush 이유별 retire |
 | Q2 `osrdnFlushFor` 는 빈 배치면 아무것도 안 한다 | `OSRDNMesaHook.c:539-545` 열었다 | ✅ 채택 — retire 는 flush 와 별개로 |

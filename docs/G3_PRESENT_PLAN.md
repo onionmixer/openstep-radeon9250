@@ -12,7 +12,7 @@
 | 레지스터 | `DP_GUI_MASTER_CNTL 0x146c`, `SRC_PITCH_OFFSET 0x1428`, `DST_PITCH_OFFSET 0x142c`, `SRC_X_Y 0x1590`(x<<16|y), `DST_X_Y 0x1594`, `DST_WIDTH_HEIGHT 0x1598`(w<<16|h), `WAIT_UNTIL 0x1720` | `radeon_reg.h:683`, `:784`, `:792`, `:797`, `:1580`, `:1585`, `:1705`; **주의** R4 의 MMIO 경로가 쓴 `SRC_Y_X 0x1434`·`DST_Y_X 0x1438` 와 다른 CP 용 레지스터다(`R4_ENGINE_PLAN.md` 1-1) |
 | 피치·오프셋 인코딩 | `(pitch_bytes/64)<<22 | (카드주소>>10)`; 우리 카드주소 = VRAM 오프셋(MC_FB_LOCATION) | `R4_ENGINE_PLAN.md` 1-2, `radeon_cp.c:1315-1317` |
 | 화면과 창 | 화면(스캔아웃)은 **카드 주소 0**(`CRTC_OFFSET` 0, `osrdn_mode.m:547-548`), 1024×768 RGB:888/32, rowBytes 4096.  클라이언트 창(오프스크린 표면들)은 `[winStart, winEnd)` = `[0x400000, …)`(`OSRDNDisplay.m:488-497`, caps.winStart) — 색 표면은 창 오프셋 0 = 카드 주소 `winStart` | 부팅 3 `osrdncaps`, `osrdn_r7b.h` caps.winStart |
-| 응용과의 계약 | `SDL_OpenStepGLPresent{abi,size, surface_origin(), set_present_mode(on), present_rect(srcX,srcY,w,h,dstX,dstY,&verdict)}` 를 `SDL_SetWindowData(win, "OpenStep.GL.VRAMPresent", &hooks)` 로 등록.  **SDL2 는 바꾸지 않는다** — 계약의 목적이 "라이브러리만 바꿔 링크" 이다(사용자 지적 2026-09-26).  SDL 은 `dstX/dstY` 를 화면 **좌상단 원점**으로 주고 화면 밖을 잘라 비음수 rect 를 만들며(`SDL_openstepvideo.m:2523-2534`), 표면이 아래→위 순서라 **행마다 역순으로 `present_rect(…, h=1, …)` 를 부른다**(`:2560-2598`; Matrox 실측 행당 7.21 us, 800×600 8.01 ms/프레임).  이동·가림(focus)·expose 는 SDL 이 처리하고 거절 시 되읽기 경로로 내려간다 | `SDL_openstepglpresent.h`, `SDL_openstepvideo.m:2599-2650` |
+| 응용과의 계약 | `SDL_OpenStepGLPresent{abi,size, surface_origin(), set_present_mode(on), present_rect(srcX,srcY,w,h,dstX,dstY,&verdict)}` 를 `SDL_SetWindowData(win, "OpenStep.GL.VRAMPresent", &hooks)` 로 등록.  **SDL2 는 바꾸지 않는다** — 계약의 목적이 "라이브러리만 바꿔 링크" 이다(사용자 지적 2026-09-26).  SDL 은 `dstX/dstY` 를 화면 **좌상단 원점**으로 주고 화면 밖을 잘라 비음수 rect 를 만들며(`SDL_openstepvideo.m:2568-2579`), 표면이 아래→위 순서라 **행마다 역순으로 `present_rect(…, h=1, …)` 를 부른다**(`SDL_openstepvideo.m:2605-2643`; Matrox 실측 행당 7.21 us, 800×600 8.01 ms/프레임).  이동·가림(focus)·expose 는 SDL 이 처리하고 거절 시 되읽기 경로로 내려간다 | `SDL_openstepglpresent.h`, `SDL_openstepvideo.m:2644-2695` |
 | 커널 게이트·판정 | magic → 모드/등록 → 걸쇠 → busy → 32bpp → 기하(0·0xffff 초과·stride 0x8000 초과) → dst 가 화면 안 → src 원점이 창 안·64 B 정렬 → src 사각형이 창 안 → 엔진 idle → 블릿 → 판정 `OK/E_MAGIC/E_SRC/E_DST/E_GEOM/E_BUSY/E_LATCH/E_MODE` | Matrox `OpenStepMGAReplacementDisplay.m:6360-6500` `runHW3DPresent`, `OpenStepMGAHW3D.h:1414-1421` |
 | 라이브러리 쪽 | `PresentMode(on)` 은 미러를 세우고(되읽기 0 회), `PresentRect` 는 ioctl 하나(VRAM→VRAM, 버스 안 넘음) | Matrox `OpenStepMGAMesaBuffer.c:746-818` |
 | 방향 | blit 은 행을 못 뒤집는다 — 데모가 절두체 top/bottom 을 바꾸고 컬링을 뒤집는다(Matrox glwin·SDL teapot 의 PRESENT 모드); **시험으로 고정** | Matrox `C8_SDL2_VRAM_PRESENT_PLAN.md` §6 |
@@ -65,8 +65,8 @@ Matrox `openstep-mga-sdl-teapot.c` 를 복사해 심볼만 radeon 것으로(카�
 ## 3. 위험·모르는 것
 - **프레임당 나머지 비용**(클리어·zclear·표면 준비): Matrox 는 14 ms 였다; 우리는 미측정 — 실기 2 단계가 답한다.  되읽기를 없애도 12 fps 를 못 넘으면 다음 칸은 그 비용이다.
 - CP 블릿이 3D 상태를 건드리는지: 참조는 매 swap 마다 같은 링에서 한다 — 같은 순서(3D idle 앞, 2D idle 뒤)를 지키면 참조와 같다.
-- 화면 쓰기는 WindowServer 모르게 일어난다(Matrox 와 같은 절충; SDL 의 가드는 focus 기반이라 메뉴·패널 가림은 못 본다 — `SDL_openstepvideo.m:2489-2505`, 코드 자체가 명시).
-- SDL 의 세로 부분 잘림: 위가 잘리면 `srcY=-dstY` 로 올리지만 아래가 잘릴 때는 `srcY` 를 안 옮긴다(`:2530-2533`) — 역순 행 복사에서는 잘못된 세로 구간이 보일 수 있다(codex 지적, 원문 확인).  SDL 포트의 결함으로 별건 기록(`openstep-sdl20`), 이 칸에서는 창을 화면 안에 두고 잰다.
+- 화면 쓰기는 WindowServer 모르게 일어난다(Matrox 와 같은 절충; SDL 의 가드는 focus 기반이라 메뉴·패널 가림은 못 본다 — `SDL_openstepvideo.m:2534-2550`, 코드 자체가 명시).
+- SDL 의 세로 부분 잘림: 위가 잘리면 `srcY=-dstY` 로 올리지만 아래가 잘릴 때는 `srcY` 를 안 옮긴다(`SDL_openstepvideo.m:2575-2578`) — 역순 행 복사에서는 잘못된 세로 구간이 보일 수 있다(codex 지적, 원문 확인).  SDL 포트의 결함으로 별건 기록(`openstep-sdl20`), 이 칸에서는 창을 화면 안에 두고 잰다.
 - 폭 16 배수 제약(피치 64 B): 데모 800·1024 는 통과; 일반 응용은 거절 판정으로 알 수 있다.
 
 ## 4. 하지 않는 것
@@ -82,10 +82,10 @@ Matrox `openstep-mga-sdl-teapot.c` 를 복사해 심볼만 radeon 것으로(카�
 | `CP_PACKET0(reg,n)` 의 n 은 레지스터 수 − 1 | `radeon_drv.h:1891`, `radeon_state.c:1389` | ✅ 채택 — 표기 수정 |
 | `cpR6Submit` 은 접두·꼬리를 안 붙이고 16 워드 패딩만 | `osrdn_cp.m:2370-2381` 원문 | ✅ 채택 — **내가 틀렸다**(요약 기억이 잘못돼 있었다), cpPresent 가 WAIT 둘을 직접 조립 |
 | `cpR7Verify` 생략 근거는 cpZclear 와 같다 | `osrdn_cp.m:3142-3157`, `osrdn_cp.m:3348-3358` | ✅ |
-| SDL 의 dst 는 좌상단 원점, 화면 밖은 StampArm 이 자른다 | `SDL_openstepvideo.m:2523-2534` 원문 | ✅ |
-| SDL 은 행마다 역순으로 부른다 | `:2560-2598` 원문("ROW BY ROW, IN REVERSE") | ✅ — 설계의 핵심 제약으로 반영(행 단위 비용) |
-| 아래쪽 잘림 때 `srcY` 미조정 결함 | `:2530-2533` 원문 | ✅ 별건 기록 |
-| 메뉴·패널 가림은 못 본다 | `:2489-2505` 원문 | ✅ 사실, Matrox 와 같은 절충 |
+| SDL 의 dst 는 좌상단 원점, 화면 밖은 StampArm 이 자른다 | `SDL_openstepvideo.m:2568-2579` 원문 | ✅ |
+| SDL 은 행마다 역순으로 부른다 | `SDL_openstepvideo.m:2605-2643` 원문("ROW BY ROW, IN REVERSE") | ✅ — 설계의 핵심 제약으로 반영(행 단위 비용) |
+| 아래쪽 잘림 때 `srcY` 미조정 결함 | `SDL_openstepvideo.m:2575-2578` 원문 | ✅ 별건 기록 |
+| 메뉴·패널 가림은 못 본다 | `SDL_openstepvideo.m:2534-2550` 원문 | ✅ 사실, Matrox 와 같은 절충 |
 
 내 추가 실수(사용자 지적): 위 결과를 보고 "SDL2 에 `present_flip` 을 더해 재빌드" 를 제안했다 — 계약의 목적이 "라이브러리만 바꿔 링크" 인데 그것을 깼을 것이다.  철회.  대신 커널 제시 ioctl 을 행 단위 호출에 싸게 만든다(2-1 6).
 

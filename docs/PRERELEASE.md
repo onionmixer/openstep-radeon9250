@@ -14,4 +14,4 @@
 | 7 | `NOTICE` 의 "앞으로 재현해야 할 것" — NetBSD radeonfb(BSD 3-clause, Itronix)·xf86-video-ati 등에서 **코드를 옮긴 곳이 실제로 있는지** | **대조함(2026-09-24), 옮긴 코드 없음.**  우리 소스 51 개(`OSRDNDisplay/**`·`mesa/*`, 마이크로코드 헤더 제외)를 `ref/upstream` 의 C 소스 6,913 개(의미 있는 줄 1,249,251 개)와 python 으로 대조: 공백을 정규화한 줄이 **세 줄 이상 연속으로** 한 참고 파일과 같은 구간 = **2 건**, 둘 다 `typedef struct { const char *name; unsigned int offset; }` 보일러플레이트(`osrdn_pll.h` 23-27, `osrdn_record.m` 111-113)이고 참고 쪽에선 연속도 아니다.  **한계**: 정확한 줄 일치만 본다 — 이름을 바꿔 옮긴 코드는 못 잡는다.  레지스터 주소·값은 `docs/R0_4_LICENSES.md` 2 의 방침대로 **사실**로 쓴 것이다 |
 | 8 | 공개될 트리의 실 IP | **0 건** 확인(2026-09-24).  `nextonion` 은 호스트 이름이고 이미 공개된 matrox 에도 있다 |
 | 9 | `.pyc` 60 개가 추적되고 있었다 | **고침**(2026-09-29) — 추적 해제, `.gitignore` 에 `*.pyc`(이력에는 남는다) |
-| 10 | codex 원문 로그 58 개(`docs/review/*_log*.txt`) 공개 여부 | **열림** — `docs/REL1_PACKAGING_PLAN.md` D9 |
+| 10 | codex 원문 로그 58 개(`docs/review/*_log*.txt`) 공개 여부 | **닫힘**(2026-09-29, 사용자: 판정표만) — 공개 커밋은 `docs/review/` 에서 `Q*_verdict.md` 14 개만 남긴 단일 커밋, `docs/REL1_PACKAGING_PLAN.md` 23 절 |

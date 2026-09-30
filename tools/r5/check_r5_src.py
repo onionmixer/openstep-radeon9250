@@ -590,6 +590,22 @@ def rules(src):
             p.append('cpPresent runs the client verifier over its own words')
         if pr.count('cpR6Submit(c, base, wd, n)') != 1:
             p.append('cpPresent does not submit its words through cpR6Submit exactly once')
+        # REL2 (docs/REL2_PRESENT_STATE_PLAN.md): the blit carries the 2D state the swap leaves to the
+        # X server -- scissor, write mask, direction -- with the clear's values, before the GMC word,
+        # because the CP's own start resets the engine and nothing else here would write them again
+        state = ('wd[n++] = C_P0N(C_DEFAULT_SC_BOTTOM_RIGHT, 0); wd[n++] = C_SC_MAX;',
+                 'wd[n++] = C_P0N(C_DP_WRITE_MASK, 0);        wd[n++] = 0xffffffffUL;',
+                 'wd[n++] = C_P0N(C_DP_CNTL, 0);              wd[n++] = C_DP_CNTL_L2R_T2B;')
+        gmc_at = pr.find('wd[n++] = C_P0N(C_DP_GUI_MASTER_CNTL, 0);   wd[n++] = C_PRESENT_GMC;')
+        for want in state:
+            at = pr.find(want)
+            if at < 0:
+                p.append('REL2: cpPresent does not write %s' % want.split('(')[1].split(',')[0])
+            elif gmc_at >= 0 and at > gmc_at:
+                p.append('REL2: cpPresent writes %s after the GMC word' % want.split('(')[1].split(',')[0])
+        m = re.search(r'#define\s+C_PRESENT_WORDS\s+(\d+)', cp)
+        if not m or int(m.group(1)) != 19:
+            p.append('REL2: C_PRESENT_WORDS is not 19 (13 of the swap + 3 state pairs)')
         if not re.search(r'if \(c->latched \|\| c->failed\)\s*return cpPresentRefuse\(c, OSRDN_PRESENT_E_LATCH\);', pr):
             p.append('a latched or failed CP is not refused as LATCH before anything else')
         for name in ('E_MAGIC', 'E_LATCH', 'E_MODE', 'E_GEOM', 'E_DST', 'E_SRC'):
@@ -1611,6 +1627,12 @@ MUTATIONS = [
      '#define C_CLEAR_ZSTENCIL        0x42227070UL', '#define C_CLEAR_ZSTENCIL        0x42227072UL', ['g3b-clear']),
     ('OSRDNDisplay.m', 'G3b: the submit line speaks on the ordinary path again',
      '    if (!quiet || live != CP_RC_RAN)\n        IOLog("RDN-R7B submit boot=%08x', '    if (1)\n        IOLog("RDN-R7B submit boot=%08x', ['g3b-clear']),
+    (CPM, 'REL2: the present blit leaves the scissor to whoever wrote it last',
+     '    wd[n++] = C_P0N(C_DEFAULT_SC_BOTTOM_RIGHT, 0); wd[n++] = C_SC_MAX;              /* REL2 */\n', '', ['g3-present']),
+    (CPM, 'REL2: the present blit leaves the write mask to whoever wrote it last',
+     '    wd[n++] = C_P0N(C_DP_WRITE_MASK, 0);        wd[n++] = 0xffffffffUL;          /* REL2 */\n', '', ['g3-present']),
+    (CPM, 'REL2: the present blit leaves the direction to whoever wrote it last',
+     '    wd[n++] = C_P0N(C_DP_CNTL, 0);              wd[n++] = C_DP_CNTL_L2R_T2B;     /* REL2 */\n', '', ['g3-present']),
     (CPM, 'G3: the GMC word drifts from the reference bits',
      '#define C_PRESENT_GMC           0x52cc36f3UL', '#define C_PRESENT_GMC           0x52cc36f2UL', ['g3-present']),
     (CPM, 'G3: the source origin alignment gate is gone',
